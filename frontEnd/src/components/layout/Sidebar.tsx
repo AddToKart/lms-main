@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -9,13 +9,24 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggleTheme, isDarkMode }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   
   const isActive = (path: string) => {
     return location.pathname === path;
   };
   
+  const handleLogout = () => {
+    // Clear authentication data
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    
+    // Redirect to login page
+    navigate('/login');
+  };
+  
   const menuItems = [
-    { path: '/', icon: 'dashboard', label: 'Dashboard' },
+    { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
     { path: '/clients', icon: 'people', label: 'Clients' },
     { path: '/loans', icon: 'account_balance', label: 'Loans' },
     { path: '/payments', icon: 'payment', label: 'Payments' },
@@ -83,16 +94,25 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggleTheme, isDarkMode }) 
           </div>
 
           <div className={`mt-4 px-3 py-3 rounded-lg ${isDarkMode ? 'bg-secondary-800' : 'bg-white shadow-sm border border-secondary-200'}`}>
-            <div className="flex items-center">
-              <div className={`h-10 w-10 rounded-full overflow-hidden ${
-                isDarkMode ? 'bg-primary-700' : 'bg-primary-500'
-              } flex items-center justify-center`}>
-                <span className="material-icons text-white">person</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className={`h-10 w-10 rounded-full overflow-hidden ${
+                  isDarkMode ? 'bg-primary-700' : 'bg-primary-500'
+                } flex items-center justify-center`}>
+                  <span className="material-icons text-white">person</span>
+                </div>
+                <div className="ml-3">
+                  <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-secondary-800'}`}>Admin User</p>
+                  <p className={`text-xs font-medium ${isDarkMode ? 'text-secondary-400' : 'text-secondary-500'}`}>Administrator</p>
+                </div>
               </div>
-              <div className="ml-3">
-                <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-secondary-800'}`}>Admin User</p>
-                <p className={`text-xs font-medium ${isDarkMode ? 'text-secondary-400' : 'text-secondary-500'}`}>Administrator</p>
-              </div>
+              <button
+                onClick={handleLogout}
+                className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-secondary-700 text-secondary-400 hover:text-white' : 'hover:bg-secondary-200 text-secondary-600 hover:text-secondary-900'}`}
+                title="Logout"
+              >
+                <span className="material-icons">logout</span>
+              </button>
             </div>
           </div>
         </div>
