@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { logout } from '../../utils/auth';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -9,20 +10,14 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggleTheme, isDarkMode }) => {
   const location = useLocation();
-  const navigate = useNavigate();
   
   const isActive = (path: string) => {
     return location.pathname === path;
   };
   
   const handleLogout = () => {
-    // Clear authentication data
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('isAuthenticated');
-    
-    // Redirect to login page
-    navigate('/login');
+    // Use the secure logout function
+    logout();
   };
   
   const menuItems = [

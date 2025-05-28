@@ -9,6 +9,11 @@ const { runMigrations } = require('./db/migrations');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
+const tokenRoutes = require('./routes/tokenRoutes');
+
+// Import security packages
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 // Text formatting helpers
 const divider = '='.repeat(60).cyan;
@@ -16,13 +21,38 @@ const subDivider = '─'.repeat(60).gray;
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// Security middleware
+app.use(helmet()); // Set security HTTP headers
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || 'http://localhost:3000' 
+    : '*',
+  credentials: true
+}));
+
+// Rate limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: 429,
+    success: false,
+    message: 'Too many requests, please try again later.'
+  }
+});
+
+// Apply rate limiting to auth routes
+app.use('/api/auth', apiLimiter);
+
+// Body parsing middleware
+app.use(express.json({ limit: '10kb' })); // Body limit is 10kb
 app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/token', tokenRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
@@ -39,6 +69,9 @@ app.get('/api', (req, res) => {
         login: { method: 'POST', url: '/api/auth/login', description: 'Login with username and password' },
         profile: { method: 'GET', url: '/api/auth/profile', description: 'Get current user profile (requires auth)' },
         changePassword: { method: 'POST', url: '/api/auth/change-password', description: 'Change password (requires auth)' }
+      },
+      token: {
+        refresh: { method: 'POST', url: '/api/token/refresh', description: 'Refresh an expired JWT token' }
       }
     }
   });

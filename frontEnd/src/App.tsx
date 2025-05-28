@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { isAuthenticated } from './utils/auth'
 
 // Components
 import Navbar from './components/layout/Navbar'
@@ -13,14 +14,38 @@ import Login from './components/pages/Login'
 
 // Protected route component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
   const location = useLocation();
+  const [loading, setLoading] = useState(true);
+  const [isAuth, setIsAuth] = useState(false);
   
-  if (!isAuthenticated) {
-    // Clear any potentially invalid auth data
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('isAuthenticated');
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // Check if user is authenticated with token validation
+        const authStatus = await isAuthenticated();
+        setIsAuth(authStatus);
+      } catch (error) {
+        console.error('Auth check error:', error);
+        setIsAuth(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+  
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-secondary-100 dark:bg-secondary-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+  
+  // Redirect to login if not authenticated
+  if (!isAuth) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
