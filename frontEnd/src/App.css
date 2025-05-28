@@ -1,0 +1,652 @@
+/* App.css - Main styles for Loan Management System */
+
+:root {
+  --primary-color: #3a6ea5;
+  --secondary-color: #f3f4f6;
+  --accent-color: #ff6347;
+  --text-color: #333;
+  --border-color: #ddd;
+  --bg-light: #fff;
+  --bg-dark: #2d3748;
+  --success-color: #38a169;
+  --warning-color: #e9b949;
+  --danger-color: #e53e3e;
+  --info-color: #4299e1;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 16px;
+  color: var(--text-color);
+  background-color: #f8f9fa;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Navbar Styles */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0 1.5rem;
+  height: 60px;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 100;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+}
+
+.navbar-left h1 {
+  font-size: 1.3rem;
+  margin-left: 1rem;
+  font-weight: 500;
+}
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-toggle {
+  background: transparent;
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  margin-left: 1rem;
+}
+
+.user-info span {
+  margin-left: 0.5rem;
+}
+
+/* Content Container */
+.content-container {
+  display: flex;
+  flex: 1;
+  margin-top: 60px;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 250px;
+  height: calc(100vh - 60px);
+  background-color: var(--bg-dark);
+  color: white;
+  position: fixed;
+  left: 0;
+  top: 60px;
+  transition: all 0.3s ease;
+  overflow-y: auto;
+  z-index: 99;
+}
+
+.sidebar.closed {
+  width: 0;
+  overflow: hidden;
+}
+
+.sidebar-content {
+  padding: 1rem 0;
+}
+
+.nav-links {
+  list-style: none;
+}
+
+.nav-links li {
+  margin-bottom: 0.5rem;
+}
+
+.nav-links a {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  color: white;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.nav-links a:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.nav-links .material-icons {
+  margin-right: 0.75rem;
+}
+
+/* Main Content Styles */
+.main-content {
+  flex: 1;
+  padding: 1.5rem;
+  margin-left: 250px;
+  transition: margin-left 0.3s ease;
+}
+
+.main-content.sidebar-open {
+  margin-left: 250px;
+}
+
+.main-content:not(.sidebar-open) {
+  margin-left: 0;
+}
+
+/* Dashboard Styles */
+.dashboard-container,
+.clients-container,
+.loans-container,
+.payments-container,
+.reports-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.card {
+  background-color: var(--bg-light);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+}
+
+.card-icon {
+  background-color: var(--primary-color);
+  color: white;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 1rem;
+}
+
+.card-content h3 {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.recent-activity {
+  background-color: var(--bg-light);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.activity-list {
+  margin-top: 1rem;
+}
+
+.activity-item {
+  display: flex;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.activity-date {
+  min-width: 100px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.activity-details {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.amount {
+  font-weight: bold;
+}
+
+.amount.overdue {
+  color: var(--danger-color);
+}
+
+/* Page Header Styles */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Button Styles */
+.btn-add,
+.btn-save,
+.btn-cancel,
+.btn-export,
+.btn-print {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-add {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.btn-add:hover {
+  background-color: #2c5282;
+}
+
+.btn-save {
+  background-color: var(--success-color);
+  color: white;
+}
+
+.btn-save:hover {
+  background-color: #2f855a;
+}
+
+.btn-cancel {
+  background-color: #e2e8f0;
+  color: #4a5568;
+}
+
+.btn-cancel:hover {
+  background-color: #cbd5e0;
+}
+
+.btn-export,
+.btn-print {
+  background-color: var(--secondary-color);
+  color: var(--text-color);
+}
+
+.btn-export:hover,
+.btn-print:hover {
+  background-color: #e2e8f0;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-color);
+  margin-right: 0.25rem;
+}
+
+.btn-icon:hover {
+  color: var(--accent-color);
+}
+
+/* Form Styles */
+.client-form-container,
+.payment-form-container {
+  background-color: var(--bg-light);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+/* Table Styles */
+.clients-table-container,
+.loans-table-container,
+.payments-table-container,
+.table-container {
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.clients-table,
+.loans-table,
+.payments-table,
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.clients-table th,
+.loans-table th,
+.payments-table th,
+.report-table th {
+  background-color: var(--secondary-color);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+}
+
+.clients-table td,
+.loans-table td,
+.payments-table td,
+.report-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.clients-table tr:hover,
+.loans-table tr:hover,
+.payments-table tr:hover,
+.report-table tr:hover {
+  background-color: #f9fafb;
+}
+
+/* Status Badge Styles */
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-badge.active {
+  background-color: rgba(56, 161, 105, 0.1);
+  color: var(--success-color);
+}
+
+.status-badge.paid {
+  background-color: rgba(56, 161, 105, 0.1);
+  color: var(--success-color);
+}
+
+.status-badge.overdue {
+  background-color: rgba(233, 185, 73, 0.1);
+  color: var(--warning-color);
+}
+
+.status-badge.default {
+  background-color: rgba(229, 62, 62, 0.1);
+  color: var(--danger-color);
+}
+
+.status-badge.completed {
+  background-color: rgba(56, 161, 105, 0.1);
+  color: var(--success-color);
+}
+
+.status-badge.pending {
+  background-color: rgba(66, 153, 225, 0.1);
+  color: var(--info-color);
+}
+
+.status-badge.failed {
+  background-color: rgba(229, 62, 62, 0.1);
+  color: var(--danger-color);
+}
+
+.status-badge.good {
+  background-color: rgba(56, 161, 105, 0.1);
+  color: var(--success-color);
+}
+
+.status-badge.warning {
+  background-color: rgba(233, 185, 73, 0.1);
+  color: var(--warning-color);
+}
+
+/* Priority Rows for Overdue Loans */
+.high-priority {
+  background-color: rgba(229, 62, 62, 0.1);
+}
+
+.medium-priority {
+  background-color: rgba(233, 185, 73, 0.1);
+}
+
+.low-priority {
+  background-color: rgba(56, 161, 105, 0.1);
+}
+
+/* Search and Filter Styles */
+.search-container {
+  position: relative;
+}
+
+.search-input {
+  padding: 0.5rem 0.5rem 0.5rem 2rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  width: 250px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0aec0;
+}
+
+.filter-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.status-filter,
+.date-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Report Styles */
+.report-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-light);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.report-content {
+  background-color: var(--bg-light);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.report-description {
+  margin-bottom: 1rem;
+  color: #666;
+}
+
+/* Summary Section Styles */
+.summary-section {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-card {
+  background-color: var(--bg-light);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  flex: 1;
+}
+
+.summary-card h3 {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: #666;
+}
+
+.summary-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+  .navbar-left h1 {
+    font-size: 1.1rem;
+  }
+  
+  .sidebar {
+    width: 200px;
+  }
+  
+  .main-content.sidebar-open {
+    margin-left: 200px;
+  }
+  
+  .summary-cards {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+  
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+  
+  .report-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .navbar-left h1 {
+    font-size: 1rem;
+  }
+  
+  .sidebar {
+    width: 100%;
+    transform: translateX(-100%);
+  }
+  
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .main-content {
+    margin-left: 0 !important;
+    padding: 1rem;
+  }
+  
+  .summary-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .activity-item {
+    flex-direction: column;
+  }
+  
+  .activity-date {
+    margin-bottom: 0.5rem;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .page-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .search-input {
+    width: 100%;
+  }
+  
+  .filter-container {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .summary-section {
+    flex-direction: column;
+  }
+}
