@@ -330,3 +330,93 @@ exports.getClientStats = async (req, res) => {
     });
   }
 };
+
+// Get client details by ID (including loans and upcoming payments)
+exports.getClientDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Fetch basic client information
+    const [clientRows] = await pool.query("SELECT * FROM clients WHERE id = ?", [id]);
+    if (clientRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Client not found" });
+    }
+    const client = clientRows[0];
+
+    // 2. Fetch all loans for the client
+    const [loansFromDB] = await pool.query("SELECT * FROM loans WHERE client_id = ? ORDER BY created_at DESC", [id]);
+    const processedLoans = loansFromDB.map(loan => ({
+      ...loan,
+      loan_amount: parseFloat(loan.loan_amount || 0),
+      approved_amount: parseFloat(loan.approved_amount || 0),
+      remaining_balance: parseFloat(loan.remaining_balance || 0),
+      interest_rate: parseFloat(loan.interest_rate || 0),
+      term_months: parseInt(loan.term_months || 0, 10)
+    }));
+
+    // 3. Fetch upcoming payments for the client
+    const [rawUpcomingPayments] = await pool.query(
+      `SELECT p.loan_id, l.purpose as loan_type, p.amount as amount_due, p.payment_date as due_date 
+       FROM payments p
+       JOIN loans l ON p.loan_id = l.id
+       WHERE p.client_id = ? AND p.status NOT IN ('Paid', 'Cancelled', 'Skipped') 
+       ORDER BY p.payment_date ASC`,
+      [id]
+    );
+    const processedUpcomingPayments = rawUpcomingPayments.map(payment => ({
+      ...payment,
+      amount_due: parseFloat(payment.amount_due || 0)
+    }));
+
+    // 4. Calculate aggregate data and determine next due dates for loans
+    let activeLoansCount = 0;
+    let totalRemainingBalance = 0;
+
+    const loansWithNextDueDate = processedLoans.map(loan => {
+      const statusLowerCase = loan.status ? loan.status.toLowerCase() : '';
+      if (statusLowerCase === 'active' || statusLowerCase === 'overdue') {
+        activeLoansCount++;
+        totalRemainingBalance += loan.remaining_balance; // Already a number
+      }
+
+      // The 'loan' object already contains 'next_due_date' directly from the 'loans' table query.
+      // No need to derive it from 'upcomingPaymentsForLoan' for this purpose.
+      return {
+        ...loan,
+        // next_due_date is already part of 'loan' from the database query
+      };
+    });
+
+    const totalUpcomingPaymentsAmount = processedUpcomingPayments.reduce((sum, payment) => {
+      return sum + payment.amount_due; // Already a number
+    }, 0);
+
+    // 5. Combine all data
+    const filteredLoansForDisplay = loansWithNextDueDate.filter(loan => {
+      const statusLowerCase = loan.status ? loan.status.toLowerCase() : '';
+      return statusLowerCase === 'active' || statusLowerCase === 'overdue';
+    });
+
+    const clientDetailsData = {
+      ...client, 
+      loans: filteredLoansForDisplay, // Use the filtered list for display
+      upcoming_payments: processedUpcomingPayments, 
+      active_loans_count: activeLoansCount,
+      total_remaining_balance: totalRemainingBalance,
+      total_upcoming_payments_amount: totalUpcomingPaymentsAmount,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: clientDetailsData,
+    });
+
+  } catch (error) {
+    console.error("Error fetching client details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch client details",
+      error: error.message,
+    });
+  }
+};

@@ -4,7 +4,9 @@ import type {
   PaymentFilters,
   PaymentFormData,
   PaymentStats,
+  PaymentMutationResponseData,
 } from "../../types/payment";
+import type { ApiResponse, PaginatedResponse } from "../../types/common";
 import {
   getPayments,
   createPayment,
@@ -165,16 +167,18 @@ const Payments: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null); // For form-specific errors
 
   // Fetch Payments using useQuery
-  const {
-    data: paymentsData,
-    isLoading: paymentsLoading,
-    isError: paymentsIsError,
-    error: paymentsError,
-  } = useQuery({
+  const paymentsQuery = useQuery<
+    ApiResponse<PaginatedResponse<Payment>>,
+    Error
+  >({
     queryKey: ["payments", filters],
     queryFn: () => getPayments(filters),
-    keepPreviousData: true, // Useful for pagination to keep showing old data while new data loads
+    placeholderData: (previousData) => previousData,
   });
+
+  const paymentsData = paymentsQuery.data;
+  const paymentsLoading = paymentsQuery.isLoading;
+  const paymentsIsError = paymentsQuery.isError;
 
   const payments: Payment[] = paymentsData?.data.payments || [];
   const totalPaymentsCount: number = paymentsData?.data.pagination.total || 0;
@@ -230,9 +234,26 @@ const Payments: React.FC = () => {
   // Mutations
   const createPaymentMutation = useMutation({
     mutationFn: createPayment,
-    onSuccess: () => {
+    onSuccess: (response: ApiResponse<PaymentMutationResponseData>) => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["paymentStats"] });
+      
+      const responseData = response.data; // Access the actual data payload
+      // Backend createPayment returns: { message, paymentId, loan_id, client_id, ... }
+      if (responseData && responseData.client_id && responseData.loan_id && responseData.paymentId) {
+        const event = new CustomEvent("paymentMade", {
+          detail: { 
+            clientId: responseData.client_id, 
+            loanId: responseData.loan_id, 
+            paymentId: responseData.paymentId 
+          },
+        });
+        window.dispatchEvent(event);
+        console.log("Dispatched paymentMade event after create for client:", responseData.client_id, "loan:", responseData.loan_id, "payment:", responseData.paymentId);
+      } else {
+        console.warn("paymentMade event not dispatched after create: client_id, loan_id or paymentId missing in response data", responseData);
+      }
+
       setShowPaymentForm(false);
       setEditingPayment(null);
     },
@@ -252,9 +273,29 @@ const Payments: React.FC = () => {
         throw new Error("Payment ID is missing for update.");
       return updatePayment(editingPayment.id, data);
     },
-    onSuccess: () => {
+    onSuccess: (response: ApiResponse<PaymentMutationResponseData>) => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["paymentStats"] });
+
+      const responseData = response.data; // Access the actual data payload
+      // The 'responseData' here is from the updatePayment backend endpoint.
+      // It should contain payment_id (or paymentId), loan_id, and client_id.
+      // The PaymentMutationResponseData interface has both paymentId and payment_id to handle potential inconsistencies.
+      const paymentIdentifier = responseData?.paymentId || responseData?.payment_id;
+      if (responseData && responseData.client_id && responseData.loan_id && paymentIdentifier) {
+        const event = new CustomEvent("paymentMade", {
+          detail: { 
+            clientId: responseData.client_id, 
+            loanId: responseData.loan_id, 
+            paymentId: paymentIdentifier 
+          },
+        });
+        window.dispatchEvent(event);
+        console.log("Dispatched paymentMade event after update for client:", responseData.client_id, "loan:", responseData.loan_id, "payment:", paymentIdentifier);
+      } else {
+        console.warn("paymentMade event not dispatched after update: client_id, loan_id, or payment_id missing in response data", responseData);
+      }
+
       setShowPaymentForm(false);
       setEditingPayment(null);
     },
@@ -515,7 +556,7 @@ const Payments: React.FC = () => {
                   Error Fetching Payments
                 </p>
                 <p className="text-destructive/80 text-sm leading-relaxed">
-                  {(paymentsError as any)?.message ||
+                  {(paymentsQuery.error as any)?.message ||
                     "An unknown error occurred."}
                 </p>
               </div>

@@ -66,3 +66,43 @@ export interface ClientDeleteResponse {
   success: boolean;
   message: string;
 }
+
+// Interfaces for Client Details View
+
+export interface ClientLoan {
+  id: string; // Consider if this should be number, aligning with database types
+  loan_type: string; // Renamed from 'type' for clarity, align with backend
+  loan_amount: number; // Renamed from 'amount' for clarity
+  remaining_balance: number;
+  interest_rate: number;
+  next_due_date: string; // Ensure this is a parsable date string
+  status: "Active" | "Overdue" | "Paid" | "Pending" | "Defaulted"; // Expanded status options
+  term_months?: number;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface ClientUpcomingPayment {
+  loan_id: string; // Consider if this should be number
+  loan_type: string;
+  amount_due: number;
+  due_date: string; // Ensure this is a parsable date string
+  payment_id?: string; // Optional payment ID if available
+}
+
+export interface ClientDetailsData extends Client {
+  loans: ClientLoan[];
+  upcoming_payments: ClientUpcomingPayment[];
+  total_remaining_balance: number;
+  total_upcoming_payments_amount: number;
+  active_loans_count: number;
+  // You might also want to include other aggregated data here, e.g.:
+  // total_loans_count: number;
+  // average_interest_rate: number;
+}
+
+export interface ClientDetailsApiResponse {
+  success: boolean;
+  data: ClientDetailsData;
+  message?: string;
+}

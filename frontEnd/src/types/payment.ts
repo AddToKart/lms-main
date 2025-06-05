@@ -1,6 +1,7 @@
 export interface Payment {
   id: number;
   loan_id: number;
+  client_id?: number; // Added client_id, as it's useful for various operations
   amount: number;
   payment_date: string;
   payment_method: string;
@@ -45,4 +46,16 @@ export interface PaymentStats {
   average_payment: number;
 }
 
-export { ApiResponse, PaginatedResponse } from "./common";
+export interface PaymentMutationResponseData {
+  message: string;
+  paymentId?: number; // For createPayment response (camelCase from backend controller)
+  payment_id?: number; // For updatePayment response (snake_case from backend controller)
+  loan_id: number;
+  client_id: number;
+  new_remaining_balance?: number;
+  new_status?: string;
+  new_next_due_date?: string | null;
+  success?: boolean; // Typically from update/delete responses
+}
+
+export type { ApiResponse, PaginatedResponse } from "./common";

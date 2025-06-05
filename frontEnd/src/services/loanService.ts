@@ -9,8 +9,10 @@ export interface Loan {
   loan_amount: number;
   interest_rate: number;
   term_months: number;
+  installment_amount?: number; // Added: Make optional or required based on your data guarantees
   remaining_balance: number;
   status: "pending" | "approved" | "active" | "paid" | "defaulted" | "rejected";
+  next_due_date?: string | null; // Added: Can be string (date) or null
   purpose: string;
   start_date: string;
   end_date: string;

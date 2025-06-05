@@ -13,6 +13,9 @@ router.get("/stats", clientController.getClientStats);
 // Route to get clients with active loans (must come before /:id)
 router.get("/with-active-loans", clientController.getClientsWithActiveLoans);
 
+// Route for specific client details (must come before generic /:id)
+router.get("/:id/details", clientController.getClientDetails);
+
 // Main CRUD routes
 router
   .route("/")

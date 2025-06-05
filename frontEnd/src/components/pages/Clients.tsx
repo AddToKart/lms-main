@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from "react";
-import type { Client, ClientFilters, ClientFormData } from "../../types/client";
+import React, { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Client, ClientFilters, ClientFormData, ClientDetailsData } from "../../types/client"; // Added ClientDetailsData
 import {
   getClients,
   createClient,
   updateClient,
   deleteClient,
+  getClientDetailsById, // Added getClientDetailsById
 } from "../../services/clientService";
 import ClientForm from "../forms/ClientForm";
 import {
@@ -49,31 +51,8 @@ interface ClientFormDataWithId extends ClientFormData {
   id: number;
 }
 
-// New interfaces for Client Details Modal
-interface ClientLoan {
-  id: string;
-  type: string;
-  amount: number;
-  remainingBalance: number;
-  interestRate: number;
-  nextDueDate: string;
-  status: "Active" | "Overdue" | "Paid";
-}
-
-interface ClientUpcomingPayment {
-  loanId: string;
-  loanType: string;
-  amountDue: number;
-  dueDate: string;
-}
-
-interface ClientDetailsData extends Client {
-  loans: ClientLoan[];
-  upcomingPayments: ClientUpcomingPayment[];
-  totalRemainingBalance: number;
-  totalUpcomingPaymentsAmount: number;
-  activeLoansCount: number;
-}
+// Local interfaces ClientLoan, ClientUpcomingPayment, and ClientDetailsData removed.
+// These are now imported from '../../types/client'.
 
 // Modal component for confirmation dialogs
 interface ConfirmModalProps {
@@ -287,6 +266,8 @@ interface ClientDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   clientDetails: ClientDetailsData | null;
+  isFetchingClientDetails: boolean;
+  fetchClientDetailsError: string | null;
   // Pass helper functions if they are not globally available or defined in a shared utility
   formatDate: (dateString: string) => string;
   getStatusBadge: (status: string) => React.ReactNode;
@@ -296,19 +277,47 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
   isOpen,
   onClose,
   clientDetails,
+  isFetchingClientDetails,
+  fetchClientDetailsError,
   formatDate,
   getStatusBadge,
 }) => {
-  if (!isOpen || !clientDetails) return null;
+  if (!isOpen) return null;
+
+  // Early return if modal is open but no client details yet AND not fetching (implies an issue)
+  // Or, if there's an error and no clientDetails to display partially.
+  // This logic might need refinement based on how optimistic updates are handled.
+  if (!clientDetails && !isFetchingClientDetails && !fetchClientDetailsError) return null;
+  // If there's an error and no client details at all, we might want to show a simpler error modal
+  // or let the main content area handle the error display if clientDetails is partially available.
 
   return (
     <FormModal
       isOpen={isOpen}
-      title={`Client Details: ${clientDetails.first_name} ${clientDetails.last_name}`}
+      title={clientDetails ? `Client Details: ${clientDetails.first_name} ${clientDetails.last_name}` : "Client Details"}
       onClose={onClose}
       size="large" // Use the new size prop for a "big modal"
     >
-      <div className="p-2 space-y-6 animate-scale-in">
+      {isFetchingClientDetails && (
+        <div className="flex items-center justify-center p-10">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+          <p className="ml-4 text-muted-foreground">Loading client details...</p>
+        </div>
+      )}
+      {fetchClientDetailsError && !isFetchingClientDetails && (
+        <div className="p-6 bg-destructive/10 border border-destructive/30 rounded-md">
+          <div className="flex items-center">
+            <FiAlertTriangle className="h-6 w-6 text-destructive mr-3" />
+            <h3 className="text-lg font-semibold text-destructive">Error Fetching Details</h3>
+          </div>
+          <p className="mt-2 text-destructive/80">{fetchClientDetailsError}</p>
+          <Button variant="outline" onClick={onClose} className="mt-4 hover-lift">
+            Close
+          </Button>
+        </div>
+      )}
+      {!isFetchingClientDetails && !fetchClientDetailsError && clientDetails && (
+        <div className="p-2 space-y-6 animate-scale-in">
         {" "}
         {/* Removed max-w-6xl from here */}
         {/* Client Info Summary */}
@@ -342,7 +351,7 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
               </span>
               <p className="text-foreground">
                 {clientDetails.address || "N/A"}
-                {clientDetails.city && `, ${clientDetails.city}`}
+                {clientDetails.country && `, ${clientDetails.country}`}
                 {clientDetails.state && `, ${clientDetails.state}`}
               </p>
             </div>
@@ -370,7 +379,7 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {clientDetails.activeLoansCount}
+                {clientDetails.active_loans_count}
               </div>
             </CardContent>
           </Card>
@@ -384,7 +393,7 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
             <CardContent>
               <div className="text-2xl font-bold">
                 $
-                {clientDetails.totalRemainingBalance.toLocaleString(undefined, {
+                {clientDetails.total_remaining_balance.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
@@ -401,7 +410,7 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
             <CardContent>
               <div className="text-2xl font-bold">
                 $
-                {clientDetails.totalUpcomingPaymentsAmount.toLocaleString(
+                {clientDetails.total_upcoming_payments_amount.toLocaleString(
                   undefined,
                   { minimumFractionDigits: 2, maximumFractionDigits: 2 }
                 )}
@@ -435,25 +444,27 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
                   {clientDetails.loans.map((loan) => (
                     <TableRow key={loan.id}>
                       <TableCell>{loan.id}</TableCell>
-                      <TableCell>{loan.type}</TableCell>
+                      <TableCell>{loan.loan_type}</TableCell>
                       <TableCell className="text-right">
                         $
-                        {loan.amount.toLocaleString(undefined, {
+                        {loan.loan_amount.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </TableCell>
                       <TableCell className="text-right">
                         $
-                        {loan.remainingBalance.toLocaleString(undefined, {
+                        {loan.remaining_balance.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </TableCell>
                       <TableCell className="text-right">
-                        {loan.interestRate.toFixed(1)}%
+                        {loan.interest_rate.toFixed(1)}%
                       </TableCell>
-                      <TableCell>{formatDate(loan.nextDueDate)}</TableCell>
+                      <TableCell>
+                        {loan.next_due_date ? formatDate(loan.next_due_date) : "N/A"}
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant={
@@ -497,7 +508,7 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {clientDetails.upcomingPayments.length > 0 ? (
+            {clientDetails.upcoming_payments.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -508,18 +519,18 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {clientDetails.upcomingPayments.map((payment) => (
-                    <TableRow key={payment.loanId + payment.dueDate}>
-                      <TableCell>{payment.loanId}</TableCell>
-                      <TableCell>{payment.loanType}</TableCell>
+                  {clientDetails.upcoming_payments.map((payment) => (
+                    <TableRow key={payment.loan_id + payment.due_date}>
+                      <TableCell>{payment.loan_id}</TableCell>
+                      <TableCell>{payment.loan_type}</TableCell>
                       <TableCell className="text-right">
                         $
-                        {payment.amountDue.toLocaleString(undefined, {
+                        {payment.amount_due.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </TableCell>
-                      <TableCell>{formatDate(payment.dueDate)}</TableCell>
+                      <TableCell>{formatDate(payment.due_date)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -536,7 +547,8 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
             <FiX className="mr-2 h-4 w-4" /> Close
           </Button>
         </div>
-      </div>
+        </div>
+      )}
     </FormModal>
   );
 };
@@ -565,6 +577,8 @@ const Clients: React.FC = () => {
 
   // State for delete confirmation
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isFetchingClientDetails, setIsFetchingClientDetails] = useState(false);
+  const [fetchClientDetailsError, setFetchClientDetailsError] = useState<string | null>(null);
   const [clientToDelete, setClientToDelete] = useState<number | null>(null);
 
   // State for Client Details Modal
@@ -572,6 +586,8 @@ const Clients: React.FC = () => {
     useState<ClientDetailsData | null>(null);
   const [isClientDetailsModalOpen, setIsClientDetailsModalOpen] =
     useState(false);
+
+  const queryClient = useQueryClient();
 
   // Fetch clients on component mount and when filters change
   useEffect(() => {
@@ -707,75 +723,79 @@ const Clients: React.FC = () => {
   };
 
   // Handle opening client details modal
-  const handleViewClientDetails = (client: Client) => {
-    // Mock data for loans and upcoming payments
-    const mockLoans: ClientLoan[] = [
-      {
-        id: "LN001",
-        type: "Personal Loan",
-        amount: 10000,
-        remainingBalance: 7500,
-        interestRate: 5.5,
-        nextDueDate: "2024-07-15",
-        status: "Active",
-      },
-      {
-        id: "LN002",
-        type: "Mortgage",
-        amount: 250000,
-        remainingBalance: 240000,
-        interestRate: 3.2,
-        nextDueDate: "2024-07-01",
-        status: "Active",
-      },
-      {
-        id: "LN003",
-        type: "Car Loan",
-        amount: 20000,
-        remainingBalance: 5000,
-        interestRate: 7.0,
-        nextDueDate: "2024-06-25",
-        status: "Overdue",
-      },
-    ];
-
-    const mockUpcomingPayments: ClientUpcomingPayment[] = [
-      {
-        loanId: "LN001",
-        loanType: "Personal Loan",
-        amountDue: 500,
-        dueDate: "2024-07-15",
-      },
-      {
-        loanId: "LN002",
-        loanType: "Mortgage",
-        amountDue: 1200,
-        dueDate: "2024-07-01",
-      },
-    ];
-
-    const totalRemainingBalance = mockLoans.reduce(
-      (sum, loan) => sum + loan.remainingBalance,
-      0
-    );
-    const totalUpcomingPaymentsAmount = mockUpcomingPayments.reduce(
-      (sum, payment) => sum + payment.amountDue,
-      0
-    );
-    const activeLoansCount = mockLoans.filter(
-      (loan) => loan.status === "Active" || loan.status === "Overdue"
-    ).length;
-
+  const handleViewClientDetails = async (client: Client) => {
+    setIsFetchingClientDetails(true);
+    setFetchClientDetailsError(null);
+    // Set basic client info immediately for a better UX, details will load in
     setSelectedClientForDetails({
-      ...client,
-      loans: mockLoans,
-      upcomingPayments: mockUpcomingPayments,
-      totalRemainingBalance,
-      totalUpcomingPaymentsAmount,
-      activeLoansCount,
+      ...client, // Spread basic client info
+      loans: [], // Initialize with empty arrays
+      upcoming_payments: [],
+      active_loans_count: 0,
+      total_remaining_balance: 0,
+      total_upcoming_payments_amount: 0,
+      // Ensure all other ClientDetailsData fields are present if not in Client
+      // For example, if ClientDetailsData has fields not in Client and not fetched yet:
+      // some_other_detail_field: 'Loading...',
     });
-    setIsClientDetailsModalOpen(true);
+    setIsClientDetailsModalOpen(true); // Open modal, it can show loading state
+
+    try {
+      const response = await getClientDetailsById(client.id);
+      if (response.success && response.data) {
+        setSelectedClientForDetails(response.data);
+      } else {
+        throw new Error(response.message || "Failed to fetch client details");
+      }
+    } catch (err: any) {
+      console.error("Error fetching client details:", err);
+      setFetchClientDetailsError(
+        err.message || "An unexpected error occurred while fetching client details."
+      );
+      // Optionally, close the modal or keep it open with an error message
+      // For now, we keep it open, and the modal should display the error
+      // If the modal was opened optimistically, ensure it shows an error state
+      // or provide a way for the user to close it if data loading fails.
+    } finally {
+      setIsFetchingClientDetails(false);
+    }
   };
+
+  // Function to refresh client details if the modal for them is open
+  const refreshOpenClientDetails = useCallback(
+    (clientIdFromEvent: number) => {
+      if (
+        isClientDetailsModalOpen &&
+        selectedClientForDetails &&
+        selectedClientForDetails.id === clientIdFromEvent
+      ) {
+        console.log(
+          `Refreshing client details for client ID: ${clientIdFromEvent} due to paymentMade event.`
+        );
+        queryClient.invalidateQueries({
+          queryKey: ["clientDetails", clientIdFromEvent],
+        });
+      }
+    },
+    [isClientDetailsModalOpen, selectedClientForDetails, queryClient]
+  );
+
+  // Effect to listen for paymentMade events
+  useEffect(() => {
+    const handlePaymentMade = (event: Event) => {
+      // Type assertion for CustomEvent
+      const customEvent = event as CustomEvent<{ clientId: number; loanId: number }>;
+      if (customEvent.detail && typeof customEvent.detail.clientId === 'number') {
+        console.log('PaymentMade event received in Clients.tsx for client:', customEvent.detail.clientId); // For debugging
+        refreshOpenClientDetails(customEvent.detail.clientId);
+      }
+    };
+
+    window.addEventListener('paymentMade', handlePaymentMade);
+    return () => {
+      window.removeEventListener('paymentMade', handlePaymentMade);
+    };
+  }, [refreshOpenClientDetails]); // Dependency: refreshOpenClientDetails
 
   // Calculate stats
   const activeClients = clients.filter(
@@ -1202,8 +1222,13 @@ const Clients: React.FC = () => {
       {/* Client Details Modal - Render the new component */}
       <ClientDetailsModal
         isOpen={isClientDetailsModalOpen}
-        onClose={() => setIsClientDetailsModalOpen(false)}
+        onClose={() => {
+          setIsClientDetailsModalOpen(false);
+          setFetchClientDetailsError(null); // Clear error when closing modal
+        }}
         clientDetails={selectedClientForDetails}
+        isFetchingClientDetails={isFetchingClientDetails}
+        fetchClientDetailsError={fetchClientDetailsError}
         formatDate={formatDate} // Pass formatDate function
         getStatusBadge={getStatusBadge} // Pass getStatusBadge function
       />

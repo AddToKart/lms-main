@@ -6,11 +6,12 @@ export interface Loan {
   loan_amount: number;
   approved_amount?: number;
   remaining_balance?: number; // Added this line
+  installment_amount?: number; // Expected monthly payment amount
   interest_rate: number;
   term_months: number;
   purpose?: string;
   start_date?: string;
-  status: "pending" | "active" | "completed" | "overdue" | "rejected";
+  status: "pending" | "approved" | "active" | "paid" | "defaulted" | "rejected" | "completed" | "overdue";
   created_at: string;
   updated_at?: string;
   approval_date?: string;
@@ -27,6 +28,7 @@ export interface LoanFormData {
   start_date: string;
   status: string;
   approved_amount?: number;
+  installment_amount?: number; // Calculated monthly payment
 }
 
 export interface LoanFilters {

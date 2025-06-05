@@ -6,6 +6,8 @@ import type {
   ClientCreateResponse,
   ClientUpdateResponse,
   ClientDeleteResponse,
+  ClientDetailsData, // Added for detailed client view
+  ClientDetailsApiResponse, // Added for detailed client view response
 } from "../types/client";
 
 // API URL from environment variable or default to localhost
@@ -111,6 +113,26 @@ export const getClientById = async (id: number): Promise<ClientResponse> => {
 
   if (!response.ok) {
     throw new Error(`Failed to fetch client: ${response.statusText}`);
+  }
+
+  return response.json();
+};
+
+// Get detailed information for a single client by ID
+export const getClientDetailsById = async (
+  id: number
+): Promise<ClientDetailsApiResponse> => {
+  const response = await fetch(`${API_URL}/api/clients/${id}/details`, {
+    method: "GET",
+    headers: createHeaders(),
+  });
+
+  if (!response.ok) {
+    // Try to parse error message from response body, otherwise use statusText
+    const errorData = await response.json().catch(() => ({ message: response.statusText }));
+    throw new Error(
+      `Failed to fetch client details: ${errorData.message || response.statusText}`
+    );
   }
 
   return response.json();

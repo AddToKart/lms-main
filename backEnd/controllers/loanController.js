@@ -313,25 +313,67 @@ exports.updateLoan = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
-    // Build dynamic update query
-    const fields = Object.keys(updates).filter((key) => key !== "id");
-    const setClause = fields.map((field) => `${field} = ?`).join(", ");
-    // Prepare values, formatting date if present
-    const values = fields.map((field) => {
-      if (field === 'start_date' && updates[field]) {
-        // Convert ISO string to Date object
-        const date = new Date(updates[field]);
-        // Format to 'YYYY-MM-DD HH:MM:SS'
-        const year = date.getFullYear();
-        const month = ('0' + (date.getMonth() + 1)).slice(-2); // getMonth() is 0-indexed
-        const day = ('0' + date.getDate()).slice(-2);
-        const hours = ('0' + date.getHours()).slice(-2);
-        const minutes = ('0' + date.getMinutes()).slice(-2);
-        const seconds = ('0' + date.getSeconds()).slice(-2);
-        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    // If status is being set to 'active', ensure next_due_date is set correctly.
+    if (updates.status === 'active') {
+      let startDateToUseString;
+      if (updates.start_date) {
+        const startDate = new Date(updates.start_date);
+        const year = startDate.getFullYear();
+        const month = ('0' + (startDate.getMonth() + 1)).slice(-2);
+        const day = ('0' + startDate.getDate()).slice(-2);
+        startDateToUseString = `${year}-${month}-${day}`;
+      } else {
+        // Fetch the loan's start_date from DB if not provided in the update
+        const [loanRecord] = await pool.query("SELECT start_date FROM loans WHERE id = ?", [id]);
+        if (loanRecord.length === 0) {
+          return res.status(404).json({ success: false, message: "Loan not found for fetching start_date when activating." });
+        }
+        if (!loanRecord[0].start_date) {
+            return res.status(400).json({ success: false, message: "Loan start_date is missing in the database. Cannot activate and set next_due_date." });
+        }
+        // Assuming start_date from DB is already in 'YYYY-MM-DD' or a compatible format for new Date()
+        const dbStartDate = new Date(loanRecord[0].start_date);
+        const year = dbStartDate.getFullYear();
+        const month = ('0' + (dbStartDate.getMonth() + 1)).slice(-2);
+        const day = ('0' + dbStartDate.getDate()).slice(-2);
+        startDateToUseString = `${year}-${month}-${day}`;
+      }
+      updates.next_due_date = startDateToUseString; // Override or add next_due_date to the updates object
+    }
+
+    // Build dynamic update query from the potentially modified 'updates' object
+    const fields = Object.keys(updates).filter(key => key !== 'id');
+    
+    const values = fields.map(field => {
+      // Ensure specific date fields are formatted to YYYY-MM-DD if they are part of the update and are valid dates
+      if ((field === 'start_date' || field === 'end_date' || field === 'next_due_date' || field === 'disbursement_date' || field === 'first_payment_date') && updates[field]) {
+        try {
+            // Check if it's already in YYYY-MM-DD format to avoid re-processing
+            if (/^\d{4}-\d{2}-\d{2}$/.test(updates[field])) {
+                return updates[field];
+            }
+            const date = new Date(updates[field]);
+            // Check if date is valid after parsing
+            if (isNaN(date.getTime())) {
+                // If date is invalid, and it's a critical date field, consider error or keep original
+                // For now, let's assume if it's not parsable, it might be null or intentionally non-date string
+                return updates[field]; 
+            }
+            const year = date.getFullYear();
+            const month = ('0' + (date.getMonth() + 1)).slice(-2);
+            const day = ('0' + date.getDate()).slice(-2);
+            return `${year}-${month}-${day}`;
+        } catch (e) {
+            // If any error during date parsing/formatting, return original value to avoid breaking query
+            // Log this error for debugging
+            console.warn(`Could not format date for field ${field} with value ${updates[field]}:`, e);
+            return updates[field]; 
+        }
       }
       return updates[field];
     });
+
+    const setClause = fields.map(field => `${field} = ?`).join(", ");
 
     if (fields.length === 0) {
       return res.status(400).json({

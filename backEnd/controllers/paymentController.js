@@ -9,11 +9,10 @@ const getPayments = async (req, res) => {
     const search = req.query.search || "";
     const status = req.query.status || "";
     const payment_method = req.query.payment_method || "";
-    const loan_id = req.query.loan_id || "";
+    const loan_id_filter = req.query.loan_id || ""; // Renamed to avoid conflict
     const date_from = req.query.date_from || "";
     const date_to = req.query.date_to || "";
 
-    // Build WHERE conditions for MySQL
     let whereConditions = [];
     let queryParams = [];
 
@@ -23,27 +22,22 @@ const getPayments = async (req, res) => {
       );
       queryParams.push(`%${search}%`, `%${search}%`);
     }
-
     if (status) {
       whereConditions.push(`p.status = ?`);
       queryParams.push(status);
     }
-
     if (payment_method) {
       whereConditions.push(`p.payment_method = ?`);
       queryParams.push(payment_method);
     }
-
-    if (loan_id) {
+    if (loan_id_filter) {
       whereConditions.push(`p.loan_id = ?`);
-      queryParams.push(loan_id);
+      queryParams.push(loan_id_filter);
     }
-
     if (date_from) {
       whereConditions.push(`p.payment_date >= ?`);
       queryParams.push(date_from);
     }
-
     if (date_to) {
       whereConditions.push(`p.payment_date <= ?`);
       queryParams.push(date_to);
@@ -54,7 +48,6 @@ const getPayments = async (req, res) => {
         ? `WHERE ${whereConditions.join(" AND ")}`
         : "";
 
-    // Main query to get payments
     const query = `
       SELECT 
         p.*,
@@ -70,11 +63,9 @@ const getPayments = async (req, res) => {
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `;
-
     queryParams.push(limit, offset);
     const [payments] = await pool.query(query, queryParams);
 
-    // Count query for pagination
     const countQuery = `
       SELECT COUNT(*) as total
       FROM payments p
@@ -82,8 +73,7 @@ const getPayments = async (req, res) => {
       LEFT JOIN clients c ON l.client_id = c.id
       ${whereClause}
     `;
-
-    const countParams = queryParams.slice(0, -2); // Remove limit and offset
+    const countParams = queryParams.slice(0, -2);
     const [countResult] = await pool.query(countQuery, countParams);
     const total = countResult[0].total;
 
@@ -109,7 +99,6 @@ const getPayments = async (req, res) => {
   }
 };
 
-// Get payment statistics
 const getPaymentStats = async (req, res) => {
   try {
     const [stats] = await pool.query(`
@@ -122,7 +111,6 @@ const getPaymentStats = async (req, res) => {
         AVG(amount) as average_payment
       FROM payments
     `);
-
     res.status(200).json({
       success: true,
       data: stats[0],
@@ -137,11 +125,9 @@ const getPaymentStats = async (req, res) => {
   }
 };
 
-// Get payment by ID
 const getPaymentById = async (req, res) => {
   try {
     const { id } = req.params;
-
     const [payments] = await pool.query(
       `
       SELECT 
@@ -158,14 +144,12 @@ const getPaymentById = async (req, res) => {
     `,
       [id]
     );
-
     if (payments.length === 0) {
       return res.status(404).json({
         success: false,
         message: "Payment not found",
       });
     }
-
     res.status(200).json({
       success: true,
       data: payments[0],
@@ -180,7 +164,6 @@ const getPaymentById = async (req, res) => {
   }
 };
 
-// Create new payment
 const createPayment = async (req, res) => {
   try {
     const {
@@ -192,93 +175,281 @@ const createPayment = async (req, res) => {
       notes,
     } = req.body;
 
-    // Log user information for debugging
-    console.log("User performing payment creation:", req.user);
-
     if (!req.user || !req.user.id) {
       console.error("Error creating payment: User ID is missing from request.");
       return res.status(401).json({
         success: false,
-        message:
-          "User authentication details are missing. Cannot process payment.",
+        message: "Unauthorized: User ID is missing. Please log in again.",
       });
     }
+    const processed_by = req.user.id;
 
-    // Fetch client_id from the loan
-    const [loanDetails] = await pool.query(
-      "SELECT client_id FROM loans WHERE id = ?",
-      [loan_id]
-    );
-
-    if (loanDetails.length === 0) {
-      return res.status(404).json({
+    if (!loan_id || !amount || !payment_date || !payment_method) {
+      return res.status(400).json({
         success: false,
-        message: "Loan not found. Cannot record payment.",
+        message:
+          "Missing required fields: loan_id, amount, payment_date, payment_method.",
       });
     }
-    const client_id = loanDetails[0].client_id;
+    if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid payment amount." });
+    }
 
-    const [result] = await pool.query(
-      `
-      INSERT INTO payments (
-        loan_id, client_id, amount, payment_date, payment_method, 
-        reference_number, notes, processed_by, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', NOW())
-    `,
-      [
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      const [loanRows] = await connection.query(
+        "SELECT client_id, remaining_balance, status, next_due_date, payment_frequency FROM loans WHERE id = ? FOR UPDATE",
+        [loan_id]
+      );
+      if (loanRows.length === 0) {
+        await connection.rollback();
+        connection.release();
+        return res
+          .status(404)
+          .json({ success: false, message: "Loan not found." });
+      }
+      const currentLoan = loanRows[0];
+      const client_id = currentLoan.client_id;
+
+      if (currentLoan.status === "paid_off") {
+        await connection.rollback();
+        connection.release();
+        return res
+          .status(400)
+          .json({ success: false, message: "Loan is already paid off." });
+      }
+
+      const paymentQuery = `
+        INSERT INTO payments (loan_id, client_id, amount, payment_date, payment_method, reference_number, notes, status, processed_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      `;
+      const paymentStatus = "completed"; // Assuming direct payments are 'completed'
+      const [paymentResult] = await connection.query(paymentQuery, [
         loan_id,
-        client_id, // Added client_id here
+        client_id,
         amount,
         payment_date,
         payment_method,
         reference_number || null,
         notes || null,
-        req.user.id,
-      ]
-    );
+        paymentStatus,
+        processed_by,
+      ]);
+      const paymentId = paymentResult.insertId;
 
-    // The trigger "update_remaining_balance_after_payment" should handle this.
-    // So, the manual update below is removed.
-    /*
-    await pool.query(
-      `
-      UPDATE loans 
-      SET remaining_balance = remaining_balance - ?
-      WHERE id = ?
-    `,
-      [amount, loan_id]
-    );
-    */
+      // Fetch the loan again to get the updated remaining_balance (updated by trigger) and status
+      const [updatedLoanRows] = await connection.query(
+        "SELECT remaining_balance, next_due_date, payment_frequency, status FROM loans WHERE id = ?",
+        [loan_id]
+      );
+      const updatedLoan = updatedLoanRows[0];
+      const finalRemainingBalance = parseFloat(updatedLoan.remaining_balance);
 
-    const [newPayment] = await pool.query(
-      `
-      SELECT 
-        p.*,
-        CONCAT(c.first_name, ' ', c.last_name) as client_name
-      FROM payments p
-      LEFT JOIN loans l ON p.loan_id = l.id
-      LEFT JOIN clients c ON l.client_id = c.id
-      WHERE p.id = ?
-    `,
-      [result.insertId]
-    );
+      const responsePayload = {
+        payment_id: paymentId,
+        loan_id: loan_id,
+        client_id: client_id,
+        new_remaining_balance: finalRemainingBalance,
+        new_loan_status: updatedLoan.status, // Use status after trigger
+        new_next_due_date: updatedLoan.next_due_date, // Initial, will be updated if loan is not paid off
+        message: "Payment created successfully.",
+      };
 
-    res.status(201).json({
-      success: true,
-      message: "Payment recorded successfully",
-      data: newPayment[0],
-    });
-  } catch (error) {
-    console.error("Error creating payment:", error);
+      let newLoanStatus = updatedLoan.status;
+      let newNextDueDateSQL = updatedLoan.next_due_date; // Default to current, might be null if paid by trigger
+
+      if (finalRemainingBalance <= 0) {
+        // This check might be redundant if the trigger already sets to 'paid_off'
+        // but it's a good safeguard.
+        newLoanStatus = "paid_off";
+        newNextDueDateSQL = null; // No next due date for paid off loans
+        responsePayload.message =
+          "Payment created successfully. Loan is now paid off.";
+      } else {
+        // Loan is not paid off, advance the next_due_date
+        // Only set to 'active' if it's not already 'paid_off' (e.g. if payment was exact amount and trigger handled it)
+        if (newLoanStatus !== "paid_off") newLoanStatus = "active";
+
+        if (updatedLoan.next_due_date && updatedLoan.payment_frequency) {
+          console.log(
+            `[PaymentController DEBUG] Loan ID: ${loan_id} - Original next_due_date from DB:`,
+            updatedLoan.next_due_date,
+            `(Type: ${typeof updatedLoan.next_due_date})`
+          );
+
+          let year, month, day;
+          const dateValue = updatedLoan.next_due_date;
+          let validDateParts = false;
+
+          if (dateValue instanceof Date && !isNaN(dateValue)) {
+            // If it's a Date object, assume it might be in local time from the DB driver.
+            // Extract components using local getters, then reconstruct as UTC.
+            year = dateValue.getFullYear();
+            month = dateValue.getMonth() + 1; // getMonth is 0-indexed
+            day = dateValue.getDate();
+            console.log(
+              `[PaymentController DEBUG] Loan ID: ${loan_id} - Parsed from Date Object (local components): Y=${year}, M=${month}, D=${day}`
+            );
+            validDateParts = true;
+          } else if (typeof dateValue === "string") {
+            const parts = dateValue.split("-");
+            if (parts.length === 3) {
+              year = parseInt(parts[0], 10);
+              month = parseInt(parts[1], 10);
+              day = parseInt(parts[2], 10);
+              if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                console.log(
+                  `[PaymentController DEBUG] Loan ID: ${loan_id} - Parsed from String: Y=${year}, M=${month}, D=${day}`
+                );
+                validDateParts = true;
+              } else {
+                console.error(
+                  `[PaymentController DEBUG] Loan ID: ${loan_id} - Failed to parse string date components: ${dateValue}`
+                );
+              }
+            } else {
+              console.error(
+                `[PaymentController DEBUG] Loan ID: ${loan_id} - Invalid string date format: ${dateValue}`
+              );
+            }
+          } else {
+            console.error(
+              `[PaymentController DEBUG] Loan ID: ${loan_id} - next_due_date is of an unexpected type or null:`,
+              dateValue
+            );
+          }
+
+          if (validDateParts) {
+            // Construct the date as UTC using the parsed/extracted year, month, day
+            const currentDueDate = new Date(Date.UTC(year, month - 1, day)); // month - 1 for 0-indexed month in Date.UTC
+            console.log(
+              `[PaymentController DEBUG] Loan ID: ${loan_id} - Constructed currentDueDate (UTC): ${currentDueDate.toISOString()}`
+            );
+
+            switch (updatedLoan.payment_frequency) {
+              case "daily":
+                currentDueDate.setUTCDate(currentDueDate.getUTCDate() + 1);
+                break;
+              case "weekly":
+                currentDueDate.setUTCDate(currentDueDate.getUTCDate() + 7);
+                break;
+              case "bi-weekly":
+                currentDueDate.setUTCDate(currentDueDate.getUTCDate() + 14);
+                break;
+              case "monthly":
+                currentDueDate.setUTCMonth(currentDueDate.getUTCMonth() + 1);
+                break;
+              case "quarterly":
+                currentDueDate.setUTCMonth(currentDueDate.getUTCMonth() + 3);
+                break;
+              case "semi-annually":
+                currentDueDate.setUTCMonth(currentDueDate.getUTCMonth() + 6);
+                break;
+              case "annually":
+                currentDueDate.setUTCFullYear(
+                  currentDueDate.getUTCFullYear() + 1
+                );
+                break;
+              default:
+                console.warn(
+                  `Loan ID: ${loan_id} - Unknown payment_frequency: '${updatedLoan.payment_frequency}'. Defaulting to monthly.`
+                );
+                currentDueDate.setUTCMonth(currentDueDate.getUTCMonth() + 1);
+            }
+            newNextDueDateSQL = currentDueDate.toISOString().split("T")[0];
+            console.log(
+              `[PaymentController DEBUG] Loan ID: ${loan_id} - Advanced newNextDueDateSQL: ${newNextDueDateSQL}`
+            );
+          } else {
+            console.error(
+              `Loan ID: ${loan_id} - Could not determine valid date parts from next_due_date ('${updatedLoan.next_due_date}'). Due date not advanced.`
+            );
+            // newNextDueDateSQL remains as currentLoan.next_due_date (which could be null if paid off or invalid)
+          }
+        } else if (newLoanStatus !== "paid_off") {
+          // This case handles if the loan is active but somehow has no next_due_date or frequency
+          console.warn(
+            `Loan ID: ${loan_id} - Active loan (not paid off) has no next_due_date or payment_frequency. Due date not advanced. Next Due Date: ${updatedLoan.next_due_date}, Frequency: ${updatedLoan.payment_frequency}`
+          );
+          // newNextDueDateSQL remains as updatedLoan.next_due_date
+        }
+      }
+
+      responsePayload.new_loan_status = newLoanStatus;
+      responsePayload.new_next_due_date = newNextDueDateSQL;
+
+      // Update loan status and next_due_date in the database
+      await connection.query(
+        "UPDATE loans SET status = ?, next_due_date = ?, updated_at = NOW() WHERE id = ?",
+        [newLoanStatus, newNextDueDateSQL, loan_id]
+      );
+      console.log(
+        `[PaymentController DEBUG] Loan ID: ${loan_id} - DB updated. New Status: ${newLoanStatus}, New Next Due Date: ${newNextDueDateSQL}`
+      );
+
+      await connection.commit();
+      connection.release();
+
+      // If loan is fully paid, cancel future scheduled payments (if any)
+      // This is done after committing the main transaction for atomicity of payment and loan update.
+      if (newLoanStatus === "paid_off") {
+        try {
+          // Using a separate connection or a new transaction for this non-critical update
+          await pool.query(
+            "UPDATE payments SET status = 'cancelled' WHERE loan_id = ? AND status = 'scheduled' AND payment_date > CURDATE()",
+            [loan_id]
+          );
+          console.log(
+            `[PaymentController INFO] Loan ID: ${loan_id} - Future scheduled payments cancelled as loan is paid off.`
+          );
+        } catch (scheduleUpdateError) {
+          console.error(
+            `[PaymentController ERROR] Loan ID: ${loan_id} - Error cancelling future scheduled payments:`,
+            scheduleUpdateError
+          );
+          // This error does not affect the main payment success response.
+        }
+      }
+
+      res.status(201).json({
+        success: true,
+        data: responsePayload,
+        message: responsePayload.message, // Use the potentially updated message
+      });
+    } catch (error) {
+      await connection.rollback();
+      connection.release();
+      console.error(
+        "Error during payment transaction for loan ID " + loan_id + ":",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to create payment due to a server error.",
+        error: error.message,
+      });
+    }
+  } catch (outerError) {
+    // Catch errors from getConnection or beginTransaction
+    console.error(
+      "Outer error in createPayment (e.g., DB connection issue) for loan ID " +
+        (req.body.loan_id || "unknown") +
+        ":",
+      outerError
+    );
     res.status(500).json({
       success: false,
-      message: "Failed to record payment",
-      error: error.message,
+      message:
+        "An unexpected server error occurred while attempting to create payment.",
+      error: outerError.message,
     });
   }
 };
 
-// Update payment
 const updatePayment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -302,14 +473,54 @@ const updatePayment = async (req, res) => {
     const setClause = fields.map((field) => `${field} = ?`).join(", ");
     const values = fields.map((field) => updateData[field]);
 
-    await pool.query(
+    const [updateResult] = await pool.query(
       `UPDATE payments SET ${setClause}, updated_at = NOW() WHERE id = ?`,
       [...values, id]
     );
 
+    if (updateResult.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found or no changes made",
+      });
+    }
+
+    // Fetch the loan_id from the updated payment
+    const [paymentDetails] = await pool.query(
+      "SELECT loan_id FROM payments WHERE id = ?",
+      [id]
+    );
+
+    if (paymentDetails.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Updated payment details could not be retrieved (loan_id missing).",
+      });
+    }
+    const loan_id = paymentDetails[0].loan_id;
+
+    // Fetch the client_id from the loans table
+    const [loanDetails] = await pool.query(
+      "SELECT client_id FROM loans WHERE id = ?",
+      [loan_id]
+    );
+
+    let client_id = null;
+    if (loanDetails.length > 0) {
+      client_id = loanDetails[0].client_id;
+    } else {
+      console.warn(
+        `Client ID not found for loan_id: ${loan_id} during payment update.`
+      );
+    }
+
     res.status(200).json({
       success: true,
       message: "Payment updated successfully",
+      payment_id: parseInt(id, 10),
+      loan_id: loan_id,
+      client_id: client_id,
     });
   } catch (error) {
     console.error("Error updating payment:", error);
@@ -327,24 +538,30 @@ const deletePayment = async (req, res) => {
     const { id } = req.params;
 
     // Get payment details before deletion to update loan balance
-    const [payment] = await pool.query("SELECT * FROM payments WHERE id = ?", [
-      id,
-    ]);
+    const [paymentResult] = await pool.query(
+      "SELECT * FROM payments WHERE id = ?",
+      [id]
+    );
 
-    if (payment.length === 0) {
+    if (paymentResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: "Payment not found",
       });
     }
 
+    const amountToRestore = paymentResult[0].amount;
+    const loanIdToUpdate = paymentResult[0].loan_id;
+
     // Delete the payment
     await pool.query("DELETE FROM payments WHERE id = ?", [id]);
 
     // Update loan remaining balance (add back the payment amount)
+    // This assumes a trigger might not handle reversing a payment.
+    // If a trigger *does* handle it, this manual update might be redundant or cause issues.
     await pool.query(
       "UPDATE loans SET remaining_balance = remaining_balance + ? WHERE id = ?",
-      [payment[0].amount, payment[0].loan_id]
+      [amountToRestore, loanIdToUpdate]
     );
 
     res.status(200).json({

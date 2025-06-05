@@ -158,7 +158,7 @@ const FormModal: React.FC<FormModalProps> = ({
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="overflow-y-auto max-h-[calc(90vh-120px)] thin-scrollbar">
+        <CardContent className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
           {children}
         </CardContent>
       </Card>
@@ -186,35 +186,27 @@ const StatsCard: React.FC<StatsCardProps> = ({
     switch (variant) {
       case "success":
         return {
-          iconBg: "bg-gradient-to-br from-green-500 to-emerald-600",
-          cardBg:
-            "bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20",
-          text: "text-green-700 dark:text-green-300",
-          border: "border-green-200/50 dark:border-green-800/50",
+          gradient: "from-green-500/20 to-emerald-500/20",
+          iconBg: "bg-gradient-to-br from-green-500 to-emerald-500",
+          textColor: "text-green-600",
         };
       case "warning":
         return {
-          iconBg: "bg-gradient-to-br from-yellow-500 to-orange-600",
-          cardBg:
-            "bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20",
-          text: "text-yellow-700 dark:text-yellow-300",
-          border: "border-yellow-200/50 dark:border-yellow-800/50",
+          gradient: "from-yellow-500/20 to-orange-500/20",
+          iconBg: "bg-gradient-to-br from-yellow-500 to-orange-500",
+          textColor: "text-yellow-600",
         };
       case "danger":
         return {
-          iconBg: "bg-gradient-to-br from-red-500 to-rose-600",
-          cardBg:
-            "bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-900/20 dark:to-rose-900/20",
-          text: "text-red-700 dark:text-red-300",
-          border: "border-red-200/50 dark:border-red-800/50",
+          gradient: "from-red-500/20 to-rose-500/20",
+          iconBg: "bg-gradient-to-br from-red-500 to-rose-500",
+          textColor: "text-red-600",
         };
       default:
         return {
-          iconBg: "bg-gradient-to-br from-blue-500 to-indigo-600",
-          cardBg:
-            "bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20",
-          text: "text-blue-700 dark:text-blue-300",
-          border: "border-blue-200/50 dark:border-blue-800/50",
+          gradient: "from-primary/20 to-primary/10",
+          iconBg: "bg-gradient-to-br from-primary to-primary/80",
+          textColor: "text-primary",
         };
     }
   };
@@ -223,27 +215,27 @@ const StatsCard: React.FC<StatsCardProps> = ({
 
   return (
     <Card
-      className={`transition-all duration-300 hover:shadow-xl hover:scale-105 hover:-translate-y-1 border-2 ${styles.border} ${styles.cardBg} hover-lift group`}
+      className={`relative overflow-hidden hover-lift border-border/50 bg-gradient-to-br ${styles.gradient}`}
     >
+      <div className="absolute -top-4 -right-4 w-20 h-20 opacity-10 group-hover:opacity-20 transition-opacity duration-300">
+        {React.cloneElement(icon as React.ReactElement, {
+          className: "w-full h-full text-current",
+        })}
+      </div>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
         </CardTitle>
         <div
-          className={`p-3 rounded-xl ${styles.iconBg} shadow-lg group-hover:scale-110 transition-transform duration-300`}
+          className={`w-8 h-8 rounded-lg ${styles.iconBg} flex items-center justify-center text-primary-foreground shadow-md`}
         >
-          <div className="text-white">{icon}</div>
+          {icon}
         </div>
       </CardHeader>
       <CardContent>
-        <div className={`text-3xl font-bold ${styles.text} transition-colors`}>
-          {value}
-        </div>
+        <div className={`text-3xl font-bold ${styles.textColor}`}>{value}</div>
         {subtitle && (
-          <div className="flex items-center gap-1 mt-2">
-            <FiTrendingUp className="w-3 h-3 text-green-500" />
-            <span className="text-xs text-muted-foreground">{subtitle}</span>
-          </div>
+          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
         )}
       </CardContent>
     </Card>
@@ -251,15 +243,16 @@ const StatsCard: React.FC<StatsCardProps> = ({
 };
 
 const Loans: React.FC = () => {
-  // State for loans data and pagination
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [loanStats, setLoanStats] = useState<LoanStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalLoans, setTotalLoans] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [loanStats, setLoanStats] = useState<LoanStats | null>(null);
+  const [estimatedMonthlyPayment, setEstimatedMonthlyPayment] = useState<
+    number | null
+  >(null);
 
-  // State for filtering and pagination
   const [filters, setFilters] = useState<LoanFilters>({
     page: 1,
     limit: 10,
@@ -283,6 +276,7 @@ const Loans: React.FC = () => {
     approved_amount: 0,
     notes: "",
     action: "approve" as "approve" | "reject",
+    loan: null as Loan | null, // Store the full loan object
   });
   const [isProcessingApproval, setIsProcessingApproval] = useState(false);
 
@@ -291,6 +285,33 @@ const Loans: React.FC = () => {
     fetchLoans();
     fetchLoanStats();
   }, [filters]);
+
+  // Calculate estimated monthly payment when loanToApprove or its approved_amount changes
+  useEffect(() => {
+    if (approvalData.loan && approvalData.action === "approve") {
+      const principal = approvalData.approved_amount;
+      const annualInterestRate = approvalData.loan.interest_rate / 100;
+      const termInMonths = approvalData.loan.term_months;
+
+      if (principal > 0 && annualInterestRate >= 0 && termInMonths > 0) {
+        if (annualInterestRate === 0) {
+          setEstimatedMonthlyPayment(principal / termInMonths);
+        } else {
+          const monthlyInterestRate = annualInterestRate / 12;
+          const payment =
+            principal *
+            (monthlyInterestRate *
+              Math.pow(1 + monthlyInterestRate, termInMonths)) /
+            (Math.pow(1 + monthlyInterestRate, termInMonths) - 1);
+          setEstimatedMonthlyPayment(payment);
+        }
+      } else {
+        setEstimatedMonthlyPayment(null);
+      }
+    } else {
+      setEstimatedMonthlyPayment(null);
+    }
+  }, [approvalData.loan, approvalData.approved_amount, approvalData.action]);
 
   // Function to fetch loans from API with comprehensive null checks
   const fetchLoans = async () => {
@@ -591,44 +612,82 @@ const Loans: React.FC = () => {
 
   // Handle loan approval click
   const handleApprovalClick = (loan: Loan, action: "approve" | "reject") => {
-    setLoanToApprove(loan);
+    setLoanToApprove(loan); // Keep loanToApprove for direct access if needed
     setApprovalData({
       approved_amount: action === "approve" ? loan.loan_amount : 0,
       notes: "",
       action,
+      loan: loan, // Set the loan object in approvalData
     });
     setShowApprovalModal(true);
   };
 
+  // Helper function to calculate monthly installment
+  const calculateInstallmentAmount = (
+    principal: number,
+    annualInterestRate: number,
+    termMonths: number
+  ): number => {
+    if (principal <= 0 || annualInterestRate < 0 || termMonths <= 0) return 0;
+    if (annualInterestRate === 0) return principal / termMonths; // No interest
+
+    const monthlyInterestRate = annualInterestRate / 100 / 12;
+    const numerator = principal * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, termMonths);
+    const denominator = Math.pow(1 + monthlyInterestRate, termMonths) - 1;
+  
+    if (denominator === 0) return principal / termMonths; // Avoid division by zero if rate is effectively zero for short term
+
+    const monthlyPayment = numerator / denominator;
+    return parseFloat(monthlyPayment.toFixed(2)); // Return as a number with 2 decimal places
+  };
+
   // Handle loan approval submission
   const handleApprovalSubmit = async () => {
-    if (!loanToApprove) return;
+    if (!approvalData.loan) return; // Use approvalData.loan
 
     setIsProcessingApproval(true);
     setError(null);
 
     try {
+      let calculatedInstallmentAmount: number | undefined = undefined;
+      if (approvalData.action === "approve" && approvalData.approved_amount && approvalData.approved_amount > 0) {
+        calculatedInstallmentAmount = calculateInstallmentAmount(
+          approvalData.approved_amount, // Use the actual approved amount
+          approvalData.loan.interest_rate,
+          approvalData.loan.term_months
+        );
+      }
+
       // Create proper LoanFormData object
       const submissionData: LoanFormData = {
-        client_id: loanToApprove.client_id,
-        loan_amount: loanToApprove.loan_amount,
-        interest_rate: loanToApprove.interest_rate,
-        term_months: loanToApprove.term_months,
-        purpose: loanToApprove.purpose || "", // Ensure purpose is provided
+        client_id: approvalData.loan.client_id,
+        loan_amount: approvalData.loan.loan_amount, // Original requested amount
+        interest_rate: approvalData.loan.interest_rate,
+        term_months: approvalData.loan.term_months,
+        purpose: approvalData.loan.purpose || "", // Ensure purpose is provided
         start_date:
-          loanToApprove.start_date || new Date().toISOString().split("T")[0],
+          approvalData.loan.start_date ||
+          new Date().toISOString().split("T")[0],
         status: approvalData.action === "approve" ? "active" : "rejected",
         approved_amount:
           approvalData.action === "approve" ? approvalData.approved_amount : 0,
+        installment_amount: calculatedInstallmentAmount, // Add calculated installment amount
       };
 
-      await updateLoan(loanToApprove.id, submissionData);
+      await updateLoan(approvalData.loan.id, submissionData);
 
       // Refresh loan list and stats
       await Promise.all([fetchLoans(), fetchLoanStats()]);
 
       setShowApprovalModal(false);
-      setLoanToApprove(null);
+      setLoanToApprove(null); // Clear loanToApprove as well
+      setApprovalData({
+        // Reset approvalData
+        approved_amount: 0,
+        notes: "",
+        action: "approve",
+        loan: null,
+      });
     } catch (err: any) {
       console.error("Error processing loan approval:", err);
       setError(`Failed to ${approvalData.action} loan. Please try again.`);
@@ -652,13 +711,14 @@ const Loans: React.FC = () => {
           </Badge>
         );
       case "completed":
+      case "paid": // Added 'paid' to show as completed
         return (
           <Badge
             variant="secondary"
             className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-md"
           >
             <div className="w-2 h-2 bg-white/70 rounded-full mr-1.5"></div>
-            Completed
+            {safeStatus === "paid" ? "Paid" : "Completed"}
           </Badge>
         );
       case "pending":
@@ -681,6 +741,16 @@ const Loans: React.FC = () => {
             Overdue
           </Badge>
         );
+      case "rejected":
+        return (
+          <Badge
+            variant="outline"
+            className="border-red-500/50 text-red-600 bg-red-500/10 shadow-sm"
+          >
+            <FiXCircle className="mr-1.5 h-3 w-3" />
+            Rejected
+          </Badge>
+        );
       default:
         return (
           <Badge variant="secondary">
@@ -691,23 +761,36 @@ const Loans: React.FC = () => {
   };
 
   // Add the missing formatDate function
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }).format(date);
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "Invalid Date";
+      }
+      return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }).format(date);
+    } catch (error) {
+      console.error("Error formatting date:", dateString, error);
+      return "Invalid Date";
+    }
   };
 
   // Add the missing formatCurrency function
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(Number(amount))) {
+      return "$0"; // Or some other placeholder like "N/A"
+    }
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(Number(amount));
   };
 
   return (
@@ -822,6 +905,7 @@ const Loans: React.FC = () => {
                 <option value="pending">Pending Approval</option>
                 <option value="active">Active</option>
                 <option value="completed">Completed</option>
+                <option value="paid">Paid</option> {/* Added Paid */}
                 <option value="overdue">Overdue</option>
                 <option value="rejected">Rejected</option>
               </select>
@@ -1154,7 +1238,7 @@ const Loans: React.FC = () => {
       )}
 
       {/* Loan Approval Modal */}
-      {showApprovalModal && loanToApprove && (
+      {showApprovalModal && approvalData.loan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-md"
@@ -1190,145 +1274,121 @@ const Loans: React.FC = () => {
                   <div>
                     <span className="text-muted-foreground">Client:</span>
                     <div className="font-medium">
-                      {loanToApprove.client_name}
+                      {approvalData.loan.client_name}
                     </div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Loan ID:</span>
-                    <div className="font-medium">#{loanToApprove.id}</div>
+                    <div className="font-medium">#{approvalData.loan.id}</div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">
                       Requested Amount:
                     </span>
                     <div className="font-medium">
-                      {formatCurrency(loanToApprove.loan_amount)}
+                      {formatCurrency(approvalData.loan.loan_amount)}
                     </div>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">
-                      Interest Rate:
-                    </span>
+                    <span className="text-muted-foreground">Interest Rate:</span>
                     <div className="font-medium">
-                      {loanToApprove.interest_rate}%
+                      {approvalData.loan.interest_rate}%
                     </div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Term:</span>
                     <div className="font-medium">
-                      {loanToApprove.term_months} months
+                      {approvalData.loan.term_months} months
                     </div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Purpose:</span>
                     <div className="font-medium">
-                      {loanToApprove.purpose || "Not specified"}
+                      {approvalData.loan.purpose || "N/A"}
                     </div>
                   </div>
+                  {/* Estimated Monthly Payment Display */}
+                  {estimatedMonthlyPayment !== null &&
+                    approvalData.action === "approve" && (
+                      <div className="col-span-2">
+                        <span className="font-medium text-muted-foreground">
+                          Est. Monthly Payment:
+                        </span>
+                        <span className="font-semibold text-primary">
+                          {" "}
+                          {formatCurrency(estimatedMonthlyPayment)}
+                        </span>
+                      </div>
+                    )}
                 </div>
               </div>
 
               {/* Action Selection */}
-              <div className="space-y-4">
-                <h4 className="font-semibold">Choose Action</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Action</label>
+                <div className="flex gap-3">
+                  <Button
+                    variant={
+                      approvalData.action === "approve"
+                        ? "default"
+                        : "outline"
+                    }
                     onClick={() =>
                       setApprovalData((prev) => ({
                         ...prev,
                         action: "approve",
+                        approved_amount: prev.loan?.loan_amount || 0, // Reset to full amount on approve
                       }))
                     }
-                    className={`p-4 rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
-                      approvalData.action === "approve"
-                        ? "border-green-500 bg-green-50 dark:bg-green-900/20"
-                        : "border-border hover:border-green-300"
-                    }`}
+                    className="flex-1 hover-lift"
                   >
-                    <div className="flex flex-col items-center gap-2">
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                          approvalData.action === "approve"
-                            ? "bg-green-500 text-white"
-                            : "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"
-                        }`}
-                      >
-                        <FiCheckCircle className="w-6 h-6" />
-                      </div>
-                      <span
-                        className={`font-medium ${
-                          approvalData.action === "approve"
-                            ? "text-green-700 dark:text-green-300"
-                            : ""
-                        }`}
-                      >
-                        Approve Loan
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      setApprovalData((prev) => ({ ...prev, action: "reject" }))
+                    <FiCheckCircle className="mr-2 h-4 w-4" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant={
+                      approvalData.action === "reject" ? "destructive" : "outline"
                     }
-                    className={`p-4 rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
-                      approvalData.action === "reject"
-                        ? "border-red-500 bg-red-50 dark:bg-red-900/20"
-                        : "border-border hover:border-red-300"
-                    }`}
+                    onClick={() =>
+                      setApprovalData((prev) => ({
+                        ...prev,
+                        action: "reject",
+                        approved_amount: 0, // Set to 0 on reject
+                      }))
+                    }
+                    className="flex-1 hover-lift"
                   >
-                    <div className="flex flex-col items-center gap-2">
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                          approvalData.action === "reject"
-                            ? "bg-red-500 text-white"
-                            : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-                        }`}
-                      >
-                        <FiXCircle className="w-6 h-6" />
-                      </div>
-                      <span
-                        className={`font-medium ${
-                          approvalData.action === "reject"
-                            ? "text-red-700 dark:text-red-300"
-                            : ""
-                        }`}
-                      >
-                        Reject Loan
-                      </span>
-                    </div>
-                  </button>
+                    <FiXCircle className="mr-2 h-4 w-4" />
+                    Reject
+                  </Button>
                 </div>
               </div>
 
-              {/* Approval Form */}
+              {/* Approved Amount (only if approving) */}
               {approvalData.action === "approve" && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">
-                      Approved Amount <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <FiDollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                      <Input
-                        type="number"
-                        value={approvalData.approved_amount}
-                        onChange={(e) =>
-                          setApprovalData((prev) => ({
-                            ...prev,
-                            approved_amount: Number(e.target.value),
-                          }))
-                        }
-                        className="pl-10"
-                        placeholder="Enter approved amount"
-                        min="0"
-                        max={loanToApprove.loan_amount}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Maximum: {formatCurrency(loanToApprove.loan_amount)}
-                    </p>
+                <div className="space-y-2">
+                  <label htmlFor="approved_amount" className="text-sm font-medium">
+                    Approved Amount
+                  </label>
+                  <div className="relative">
+                    <FiDollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                    <Input
+                      id="approved_amount"
+                      type="number"
+                      value={approvalData.approved_amount}
+                      onChange={(e) =>
+                        setApprovalData((prev) => ({
+                          ...prev,
+                          approved_amount: parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      className="pl-8 border-border/50 focus:border-primary/50 bg-background"
+                      max={approvalData.loan?.loan_amount} // Max is original loan amount
+                    />
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Maximum: {formatCurrency(approvalData.loan?.loan_amount)}
+                  </p>
                 </div>
               )}
 

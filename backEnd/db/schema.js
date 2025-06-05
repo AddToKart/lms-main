@@ -52,13 +52,16 @@ const createTables = async () => {
         client_id INT NOT NULL,
         loan_amount DECIMAL(15, 2) NOT NULL,
         approved_amount DECIMAL(15, 2) DEFAULT NULL,
-        remaining_balance DECIMAL(15, 2) DEFAULT NULL,
+        installment_amount DECIMAL(10, 2) DEFAULT NULL,
         interest_rate DECIMAL(5, 2) NOT NULL,
         term_months INT NOT NULL,
         purpose TEXT,
         start_date DATE,
         end_date DATE,
-        status ENUM('pending', 'approved', 'active', 'completed', 'overdue', 'rejected') DEFAULT 'pending',
+        status VARCHAR(50) DEFAULT 'pending', -- e.g., pending, approved, active, paid, defaulted, rejected, completed, overdue
+        next_due_date DATE NULL DEFAULT NULL, -- Stores the date of the next expected payment
+        payment_frequency VARCHAR(20) DEFAULT 'monthly', -- e.g., monthly, weekly, bi-weekly
+        remaining_balance DECIMAL(15, 2) DEFAULT NULL,
         approval_date DATE NULL,
         approval_notes TEXT,
         approved_by INT NULL,
@@ -80,17 +83,84 @@ const createTables = async () => {
       );
       if (approvedAmountColInfo.length === 0) {
         console.log(
-          "   🔧 Adding 'approved_amount' column to 'loans' table..."
+          "   Adding 'approved_amount' column to 'loans' table..."
         );
         await pool.execute(
           `ALTER TABLE loans ADD COLUMN approved_amount DECIMAL(15, 2) DEFAULT NULL AFTER loan_amount`
         );
-        console.log("      ✅ Column 'approved_amount' added.");
+        console.log("      Column 'approved_amount' added.");
       }
     } catch (fixApprovedAmountError) {
       console.error(
-        "   ❌ Error during 'loans' table 'approved_amount' column check/fix:",
+        "   Error during 'loans' table 'approved_amount' column check/fix:",
         fixApprovedAmountError.message
+      );
+    }
+
+    // Attempt to add 'installment_amount' column to 'loans' table if necessary
+    try {
+      const [installmentAmountColInfo] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'installment_amount'`
+      );
+      if (installmentAmountColInfo.length === 0) {
+        console.log(
+          "   Adding 'installment_amount' column to 'loans' table..."
+        );
+        await pool.execute(
+          `ALTER TABLE loans ADD COLUMN installment_amount DECIMAL(10, 2) DEFAULT NULL AFTER approved_amount`
+        );
+        console.log("      Column 'installment_amount' added.");
+      }
+    } catch (fixInstallmentAmountError) {
+      console.error(
+        "   Error during 'loans' table 'installment_amount' column check/fix:",
+        fixInstallmentAmountError.message
+      );
+    }
+
+    // Add next_due_date column if it doesn't exist, using INFORMATION_SCHEMA check
+    try {
+      const [nextDueDateColInfo] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'next_due_date'`
+      );
+      if (nextDueDateColInfo.length === 0) {
+        console.log(
+          "   Adding 'next_due_date' column to 'loans' table..."
+        );
+        // Adding next_due_date after 'status' as per the CREATE TABLE definition and previous attempt
+        await pool.execute(
+          `ALTER TABLE loans ADD COLUMN next_due_date DATE NULL DEFAULT NULL AFTER status`
+        );
+        console.log("      Column 'next_due_date' added.");
+      }
+    } catch (fixNextDueDateError) {
+      console.error(
+        "   Error during 'loans' table 'next_due_date' column check/fix:",
+        fixNextDueDateError.message
+      );
+    }
+
+    // Attempt to add 'payment_frequency' column to 'loans' table if necessary
+    try {
+      const [paymentFrequencyColInfo] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'payment_frequency'`
+      );
+      if (paymentFrequencyColInfo.length === 0) {
+        console.log(
+          "   Adding 'payment_frequency' column to 'loans' table..."
+        );
+        await pool.execute(
+          `ALTER TABLE loans ADD COLUMN payment_frequency VARCHAR(20) DEFAULT 'monthly' AFTER next_due_date`
+        );
+        console.log("      Column 'payment_frequency' added.");
+      }
+    } catch (fixPaymentFrequencyError) {
+      console.error(
+        "   Error during 'loans' table 'payment_frequency' column check/fix:",
+        fixPaymentFrequencyError.message
       );
     }
 

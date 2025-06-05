@@ -5,6 +5,7 @@ import type {
   PaymentFilters,
   ApiResponse,
   PaginatedResponse,
+  PaymentMutationResponseData,
 } from "../types/payment";
 
 export const getPayments = async (
@@ -45,7 +46,7 @@ export const getPaymentById = async (
 
 export const createPayment = async (
   data: PaymentFormData
-): Promise<ApiResponse<Payment>> => {
+): Promise<ApiResponse<PaymentMutationResponseData>> => {
   try {
     const response = await apiRequest("/api/payments", {
       method: "POST",
@@ -61,7 +62,7 @@ export const createPayment = async (
 export const updatePayment = async (
   id: number,
   data: Partial<PaymentFormData>
-): Promise<ApiResponse<Payment>> => {
+): Promise<ApiResponse<PaymentMutationResponseData>> => {
   try {
     const response = await apiRequest(`/api/payments/${id}`, {
       method: "PUT",
