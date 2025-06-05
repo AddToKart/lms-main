@@ -306,30 +306,19 @@ const createPayment = async (req, res) => {
                   `[PaymentController DEBUG] Loan ID: ${loan_id} - Parsed from String: Y=${year}, M=${month}, D=${day}`
                 );
                 validDateParts = true;
-              } else {
-                console.error(
-                  `[PaymentController DEBUG] Loan ID: ${loan_id} - Failed to parse string date components: ${dateValue}`
-                );
               }
-            } else {
-              console.error(
-                `[PaymentController DEBUG] Loan ID: ${loan_id} - Invalid string date format: ${dateValue}`
-              );
             }
-          } else {
-            console.error(
-              `[PaymentController DEBUG] Loan ID: ${loan_id} - next_due_date is of an unexpected type or null:`,
-              dateValue
-            );
           }
 
           if (validDateParts) {
-            // Construct the date as UTC using the parsed/extracted year, month, day
-            const currentDueDate = new Date(Date.UTC(year, month - 1, day)); // month - 1 for 0-indexed month in Date.UTC
+            // Create the current due date
+            const currentDueDate = new Date(Date.UTC(year, month - 1, day));
             console.log(
-              `[PaymentController DEBUG] Loan ID: ${loan_id} - Constructed currentDueDate (UTC): ${currentDueDate.toISOString()}`
+              `[PaymentController DEBUG] Loan ID: ${loan_id} - Current due date (UTC): ${currentDueDate.toISOString()}`
             );
 
+            // Always advance from the current due date by one payment period
+            // This payment covers the current period, so next due date should be one period later
             switch (updatedLoan.payment_frequency) {
               case "daily":
                 currentDueDate.setUTCDate(currentDueDate.getUTCDate() + 1);
@@ -341,6 +330,7 @@ const createPayment = async (req, res) => {
                 currentDueDate.setUTCDate(currentDueDate.getUTCDate() + 14);
                 break;
               case "monthly":
+                // For monthly payments, advance by exactly one month
                 currentDueDate.setUTCMonth(currentDueDate.getUTCMonth() + 1);
                 break;
               case "quarterly":
@@ -360,22 +350,20 @@ const createPayment = async (req, res) => {
                 );
                 currentDueDate.setUTCMonth(currentDueDate.getUTCMonth() + 1);
             }
+
             newNextDueDateSQL = currentDueDate.toISOString().split("T")[0];
             console.log(
-              `[PaymentController DEBUG] Loan ID: ${loan_id} - Advanced newNextDueDateSQL: ${newNextDueDateSQL}`
+              `[PaymentController DEBUG] Loan ID: ${loan_id} - NEW next due date after payment: ${newNextDueDateSQL}`
             );
           } else {
             console.error(
               `Loan ID: ${loan_id} - Could not determine valid date parts from next_due_date ('${updatedLoan.next_due_date}'). Due date not advanced.`
             );
-            // newNextDueDateSQL remains as currentLoan.next_due_date (which could be null if paid off or invalid)
           }
         } else if (newLoanStatus !== "paid_off") {
-          // This case handles if the loan is active but somehow has no next_due_date or frequency
           console.warn(
             `Loan ID: ${loan_id} - Active loan (not paid off) has no next_due_date or payment_frequency. Due date not advanced. Next Due Date: ${updatedLoan.next_due_date}, Frequency: ${updatedLoan.payment_frequency}`
           );
-          // newNextDueDateSQL remains as updatedLoan.next_due_date
         }
       }
 

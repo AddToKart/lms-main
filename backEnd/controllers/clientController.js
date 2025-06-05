@@ -337,80 +337,128 @@ exports.getClientDetails = async (req, res) => {
     const { id } = req.params;
 
     // 1. Fetch basic client information
-    const [clientRows] = await pool.query("SELECT * FROM clients WHERE id = ?", [id]);
+    const [clientRows] = await pool.query(
+      "SELECT * FROM clients WHERE id = ?",
+      [id]
+    );
     if (clientRows.length === 0) {
-      return res.status(404).json({ success: false, message: "Client not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Client not found" });
     }
     const client = clientRows[0];
 
-    // 2. Fetch all loans for the client
-    const [loansFromDB] = await pool.query("SELECT * FROM loans WHERE client_id = ? ORDER BY created_at DESC", [id]);
-    const processedLoans = loansFromDB.map(loan => ({
-      ...loan,
+    // 2. Fetch all loans for the client with proper type mapping
+    const [loansFromDB] = await pool.query(
+      `
+      SELECT 
+        id,
+        loan_amount,
+        approved_amount,
+        remaining_balance,
+        interest_rate,
+        term_months,
+        purpose,
+        start_date,
+        end_date,
+        status,
+        next_due_date,
+        payment_frequency,
+        created_at,
+        updated_at
+      FROM loans 
+      WHERE client_id = ? 
+      ORDER BY created_at DESC
+    `,
+      [id]
+    );
+
+    const processedLoans = loansFromDB.map((loan) => ({
+      id: loan.id.toString(),
+      loan_type: loan.purpose || "Personal Loan", // Map purpose to loan_type
       loan_amount: parseFloat(loan.loan_amount || 0),
       approved_amount: parseFloat(loan.approved_amount || 0),
       remaining_balance: parseFloat(loan.remaining_balance || 0),
       interest_rate: parseFloat(loan.interest_rate || 0),
-      term_months: parseInt(loan.term_months || 0, 10)
+      term_months: parseInt(loan.term_months || 0, 10),
+      start_date: loan.start_date,
+      end_date: loan.end_date,
+      status:
+        loan.status === "active"
+          ? "Active"
+          : loan.status === "paid"
+          ? "Paid"
+          : loan.status === "overdue"
+          ? "Overdue"
+          : loan.status === "pending"
+          ? "Pending"
+          : loan.status === "defaulted"
+          ? "Defaulted"
+          : loan.status || "Unknown",
+      next_due_date: loan.next_due_date,
     }));
 
-    // 3. Fetch upcoming payments for the client
-    const [rawUpcomingPayments] = await pool.query(
-      `SELECT p.loan_id, l.purpose as loan_type, p.amount as amount_due, p.payment_date as due_date 
-       FROM payments p
-       JOIN loans l ON p.loan_id = l.id
-       WHERE p.client_id = ? AND p.status NOT IN ('Paid', 'Cancelled', 'Skipped') 
-       ORDER BY p.payment_date ASC`,
-      [id]
+    // 3. Generate upcoming payments from active loans' next_due_date
+    const processedUpcomingPayments = processedLoans
+      .filter((loan) => {
+        const statusLowerCase = loan.status ? loan.status.toLowerCase() : "";
+        return (
+          (statusLowerCase === "active" || statusLowerCase === "overdue") &&
+          loan.next_due_date &&
+          loan.remaining_balance > 0
+        );
+      })
+      .map((loan) => {
+        // Calculate installment amount - simple division for now
+        const installmentAmount =
+          loan.loan_amount && loan.term_months
+            ? loan.loan_amount / loan.term_months
+            : 0;
+
+        // Use the smaller of installment amount or remaining balance
+        const amountDue = Math.min(installmentAmount, loan.remaining_balance);
+
+        return {
+          loan_id: loan.id,
+          loan_type: loan.loan_type,
+          amount_due: parseFloat(amountDue.toFixed(2)),
+          due_date: loan.next_due_date,
+        };
+      })
+      .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+
+    // 4. Calculate summary statistics
+    const activeLoanCount = processedLoans.filter(
+      (loan) => loan.status.toLowerCase() === "active"
+    ).length;
+
+    const totalRemainingBalance = processedLoans
+      .filter((loan) => loan.status.toLowerCase() === "active")
+      .reduce((sum, loan) => sum + loan.remaining_balance, 0);
+
+    const totalUpcomingPaymentsAmount = processedUpcomingPayments.reduce(
+      (sum, payment) => {
+        return sum + payment.amount_due;
+      },
+      0
     );
-    const processedUpcomingPayments = rawUpcomingPayments.map(payment => ({
-      ...payment,
-      amount_due: parseFloat(payment.amount_due || 0)
-    }));
 
-    // 4. Calculate aggregate data and determine next due dates for loans
-    let activeLoansCount = 0;
-    let totalRemainingBalance = 0;
-
-    const loansWithNextDueDate = processedLoans.map(loan => {
-      const statusLowerCase = loan.status ? loan.status.toLowerCase() : '';
-      if (statusLowerCase === 'active' || statusLowerCase === 'overdue') {
-        activeLoansCount++;
-        totalRemainingBalance += loan.remaining_balance; // Already a number
-      }
-
-      // The 'loan' object already contains 'next_due_date' directly from the 'loans' table query.
-      // No need to derive it from 'upcomingPaymentsForLoan' for this purpose.
-      return {
-        ...loan,
-        // next_due_date is already part of 'loan' from the database query
-      };
-    });
-
-    const totalUpcomingPaymentsAmount = processedUpcomingPayments.reduce((sum, payment) => {
-      return sum + payment.amount_due; // Already a number
-    }, 0);
-
-    // 5. Combine all data
-    const filteredLoansForDisplay = loansWithNextDueDate.filter(loan => {
-      const statusLowerCase = loan.status ? loan.status.toLowerCase() : '';
-      return statusLowerCase === 'active' || statusLowerCase === 'overdue';
-    });
-
-    const clientDetailsData = {
-      ...client, 
-      loans: filteredLoansForDisplay, // Use the filtered list for display
-      upcoming_payments: processedUpcomingPayments, 
-      active_loans_count: activeLoansCount,
-      total_remaining_balance: totalRemainingBalance,
-      total_upcoming_payments_amount: totalUpcomingPaymentsAmount,
+    // 5. Build response
+    const responseData = {
+      ...client,
+      loans: processedLoans,
+      upcoming_payments: processedUpcomingPayments,
+      active_loans_count: activeLoanCount,
+      total_remaining_balance: parseFloat(totalRemainingBalance.toFixed(2)),
+      total_upcoming_payments_amount: parseFloat(
+        totalUpcomingPaymentsAmount.toFixed(2)
+      ),
     };
 
     res.status(200).json({
       success: true,
-      data: clientDetailsData,
+      data: responseData,
     });
-
   } catch (error) {
     console.error("Error fetching client details:", error);
     res.status(500).json({

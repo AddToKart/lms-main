@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Client, ClientFilters, ClientFormData, ClientDetailsData } from "../../types/client"; // Added ClientDetailsData
+import type {
+  Client,
+  ClientFilters,
+  ClientFormData,
+  ClientDetailsData,
+} from "../../types/client"; // Added ClientDetailsData
 import {
   getClients,
   createClient,
@@ -287,268 +292,349 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
   // Early return if modal is open but no client details yet AND not fetching (implies an issue)
   // Or, if there's an error and no clientDetails to display partially.
   // This logic might need refinement based on how optimistic updates are handled.
-  if (!clientDetails && !isFetchingClientDetails && !fetchClientDetailsError) return null;
+  if (!clientDetails && !isFetchingClientDetails && !fetchClientDetailsError)
+    return null;
   // If there's an error and no client details at all, we might want to show a simpler error modal
-  // or let the main content area handle the error display if clientDetails is partially available.
+  // or let the main content area handle the error if clientDetails is partially available.
 
   return (
     <FormModal
       isOpen={isOpen}
-      title={clientDetails ? `Client Details: ${clientDetails.first_name} ${clientDetails.last_name}` : "Client Details"}
+      title={
+        clientDetails
+          ? `Client Details: ${clientDetails.first_name} ${clientDetails.last_name}`
+          : "Client Details"
+      }
       onClose={onClose}
       size="large" // Use the new size prop for a "big modal"
     >
       {isFetchingClientDetails && (
         <div className="flex items-center justify-center p-10">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-          <p className="ml-4 text-muted-foreground">Loading client details...</p>
+          <p className="ml-4 text-muted-foreground">
+            Loading client details...
+          </p>
         </div>
       )}
       {fetchClientDetailsError && !isFetchingClientDetails && (
         <div className="p-6 bg-destructive/10 border border-destructive/30 rounded-md">
           <div className="flex items-center">
             <FiAlertTriangle className="h-6 w-6 text-destructive mr-3" />
-            <h3 className="text-lg font-semibold text-destructive">Error Fetching Details</h3>
+            <h3 className="text-lg font-semibold text-destructive">
+              Error Fetching Details
+            </h3>
           </div>
           <p className="mt-2 text-destructive/80">{fetchClientDetailsError}</p>
-          <Button variant="outline" onClick={onClose} className="mt-4 hover-lift">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="mt-4 hover-lift"
+          >
             Close
           </Button>
         </div>
       )}
-      {!isFetchingClientDetails && !fetchClientDetailsError && clientDetails && (
-        <div className="p-2 space-y-6 animate-scale-in">
-        {" "}
-        {/* Removed max-w-6xl from here */}
-        {/* Client Info Summary */}
-        <Card className="bg-muted/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <FiUser className="text-primary" />
-              Client Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-            <div>
-              <span className="font-medium text-muted-foreground">
-                Full Name:
-              </span>
-              <p className="text-foreground">
-                {clientDetails.first_name} {clientDetails.last_name}
-              </p>
+      {!isFetchingClientDetails &&
+        !fetchClientDetailsError &&
+        clientDetails && (
+          <div className="p-2 space-y-6 animate-scale-in">
+            {" "}
+            {/* Removed max-w-6xl from here */}
+            {/* Client Info Summary */}
+            <Card className="bg-muted/30">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <FiUser className="text-primary" />
+                  Client Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="font-medium text-muted-foreground">
+                    Full Name:
+                  </span>
+                  <p className="text-foreground">
+                    {clientDetails.first_name} {clientDetails.last_name}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium text-muted-foreground">
+                    Email:
+                  </span>
+                  <p className="text-foreground">
+                    {clientDetails.email || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium text-muted-foreground">
+                    Phone:
+                  </span>
+                  <p className="text-foreground">
+                    {clientDetails.phone || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium text-muted-foreground">
+                    Address:
+                  </span>
+                  <p className="text-foreground">
+                    {clientDetails.address || "N/A"}
+                    {clientDetails.country && `, ${clientDetails.country}`}
+                    {clientDetails.state && `, ${clientDetails.state}`}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium text-muted-foreground">
+                    Status:
+                  </span>
+                  {/* Changed <p> to <div> to avoid nesting div (from Badge) inside p */}
+                  <div>{getStatusBadge(clientDetails.status)}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-muted-foreground">
+                    Joined:
+                  </span>
+                  <p className="text-foreground">
+                    {formatDate(clientDetails.created_at)}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            {/* Financial Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="hover-lift">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Active Loans
+                  </CardTitle>
+                  <FiCreditCard className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {clientDetails.active_loans_count}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="hover-lift">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Total Remaining Balance
+                  </CardTitle>
+                  <FiDollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    $
+                    {clientDetails.total_remaining_balance.toLocaleString(
+                      undefined,
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="hover-lift">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Upcoming Payments Due
+                  </CardTitle>
+                  <FiCalendar className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    $
+                    {clientDetails.total_upcoming_payments_amount.toLocaleString(
+                      undefined,
+                      { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <div>
-              <span className="font-medium text-muted-foreground">Email:</span>
-              <p className="text-foreground">{clientDetails.email || "N/A"}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">Phone:</span>
-              <p className="text-foreground">{clientDetails.phone || "N/A"}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">
-                Address:
-              </span>
-              <p className="text-foreground">
-                {clientDetails.address || "N/A"}
-                {clientDetails.country && `, ${clientDetails.country}`}
-                {clientDetails.state && `, ${clientDetails.state}`}
-              </p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">Status:</span>
-              {/* Changed <p> to <div> to avoid nesting div (from Badge) inside p */}
-              <div>{getStatusBadge(clientDetails.status)}</div>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">Joined:</span>
-              <p className="text-foreground">
-                {formatDate(clientDetails.created_at)}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        {/* Financial Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="hover-lift">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Active Loans
-              </CardTitle>
-              <FiCreditCard className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {clientDetails.active_loans_count}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="hover-lift">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Remaining Balance
-              </CardTitle>
-              <FiDollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                $
-                {clientDetails.total_remaining_balance.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="hover-lift">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Upcoming Payments Due
-              </CardTitle>
-              <FiCalendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                $
-                {clientDetails.total_upcoming_payments_amount.toLocaleString(
-                  undefined,
-                  { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+            {/* Active Loans Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <FiCreditCard className="text-primary" />
+                  Active Loans
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {clientDetails.loans.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b">
+                          <TableHead className="h-10 px-4 text-xs font-medium">
+                            ID
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium">
+                            Type
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium text-right">
+                            Amount
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium text-right">
+                            Remaining
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium text-right">
+                            Rate
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium">
+                            Next Due
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium">
+                            Status
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {clientDetails.loans.map((loan) => (
+                          <TableRow
+                            key={loan.id}
+                            className="border-b border-border/50 hover:bg-muted/50"
+                          >
+                            <TableCell className="h-8 px-4 py-2 text-sm font-medium">
+                              {loan.id}
+                            </TableCell>
+                            <TableCell
+                              className="h-8 px-4 py-2 text-sm max-w-[120px] truncate"
+                              title={loan.loan_type}
+                            >
+                              {loan.loan_type}
+                            </TableCell>
+                            <TableCell className="h-8 px-4 py-2 text-sm text-right font-medium">
+                              $
+                              {loan.loan_amount.toLocaleString(undefined, {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              })}
+                            </TableCell>
+                            <TableCell className="h-8 px-4 py-2 text-sm text-right font-medium">
+                              $
+                              {loan.remaining_balance.toLocaleString(
+                                undefined,
+                                {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 0,
+                                }
+                              )}
+                            </TableCell>
+                            <TableCell className="h-8 px-4 py-2 text-sm text-right">
+                              {loan.interest_rate.toFixed(1)}%
+                            </TableCell>
+                            <TableCell className="h-8 px-4 py-2 text-sm">
+                              {loan.next_due_date
+                                ? formatDate(loan.next_due_date)
+                                : "N/A"}
+                            </TableCell>
+                            <TableCell className="h-8 px-4 py-2">
+                              <Badge
+                                variant={
+                                  loan.status === "Overdue"
+                                    ? "destructive"
+                                    : loan.status === "Paid"
+                                    ? "default"
+                                    : "outline"
+                                }
+                                className="text-xs px-2 py-1"
+                              >
+                                {loan.status === "Overdue" && (
+                                  <FiAlertTriangle className="mr-1 h-3 w-3" />
+                                )}
+                                {loan.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8 px-4">
+                    No active loans found for this client.
+                  </p>
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        {/* Active Loans Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <FiCreditCard className="text-primary" />
-              Active Loans
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {clientDetails.loans.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Loan ID</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Remaining</TableHead>
-                    <TableHead className="text-right">Interest</TableHead>
-                    <TableHead>Next Due</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {clientDetails.loans.map((loan) => (
-                    <TableRow key={loan.id}>
-                      <TableCell>{loan.id}</TableCell>
-                      <TableCell>{loan.loan_type}</TableCell>
-                      <TableCell className="text-right">
-                        $
-                        {loan.loan_amount.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        $
-                        {loan.remaining_balance.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {loan.interest_rate.toFixed(1)}%
-                      </TableCell>
-                      <TableCell>
-                        {loan.next_due_date ? formatDate(loan.next_due_date) : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            loan.status === "Overdue"
-                              ? "danger"
-                              : loan.status === "Paid"
-                              ? "success"
-                              : "outline"
-                          }
-                          className={
-                            loan.status === "Overdue"
-                              ? "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30"
-                              : loan.status === "Paid"
-                              ? "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30"
-                              : ""
-                          }
-                        >
-                          {loan.status === "Overdue" && (
-                            <FiAlertTriangle className="mr-1 h-3 w-3" />
-                          )}
-                          {loan.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <p className="text-muted-foreground text-center py-4">
-                No active loans found for this client.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        {/* Upcoming Payments Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <FiCalendar className="text-primary" />
-              Upcoming Payments
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {clientDetails.upcoming_payments.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Loan ID</TableHead>
-                    <TableHead>Loan Type</TableHead>
-                    <TableHead className="text-right">Amount Due</TableHead>
-                    <TableHead>Due Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {clientDetails.upcoming_payments.map((payment) => (
-                    <TableRow key={payment.loan_id + payment.due_date}>
-                      <TableCell>{payment.loan_id}</TableCell>
-                      <TableCell>{payment.loan_type}</TableCell>
-                      <TableCell className="text-right">
-                        $
-                        {payment.amount_due.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </TableCell>
-                      <TableCell>{formatDate(payment.due_date)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <p className="text-muted-foreground text-center py-4">
-                No upcoming payments found for this client.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <div className="flex justify-end pt-4">
-          <Button variant="outline" onClick={onClose} className="hover-lift">
-            <FiX className="mr-2 h-4 w-4" /> Close
-          </Button>
-        </div>
-        </div>
-      )}
+              </CardContent>
+            </Card>
+            {/* Upcoming Payments Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <FiCalendar className="text-primary" />
+                  Upcoming Payments
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {clientDetails.upcoming_payments.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b">
+                          <TableHead className="h-10 px-4 text-xs font-medium">
+                            Loan ID
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium">
+                            Type
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium text-right">
+                            Amount Due
+                          </TableHead>
+                          <TableHead className="h-10 px-4 text-xs font-medium">
+                            Due Date
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {clientDetails.upcoming_payments.map((payment) => (
+                          <TableRow
+                            key={payment.loan_id + payment.due_date}
+                            className="border-b border-border/50 hover:bg-muted/50"
+                          >
+                            <TableCell className="h-8 px-4 py-2 text-sm font-medium">
+                              {payment.loan_id}
+                            </TableCell>
+                            <TableCell
+                              className="h-8 px-4 py-2 text-sm max-w-[120px] truncate"
+                              title={payment.loan_type}
+                            >
+                              {payment.loan_type}
+                            </TableCell>
+                            <TableCell className="h-8 px-4 py-2 text-sm text-right font-medium">
+                              $
+                              {payment.amount_due.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </TableCell>
+                            <TableCell className="h-8 px-4 py-2 text-sm">
+                              {formatDate(payment.due_date)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8 px-4">
+                    No upcoming payments found for this client.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            <div className="flex justify-end pt-4">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="hover-lift"
+              >
+                <FiX className="mr-2 h-4 w-4" /> Close
+              </Button>
+            </div>
+          </div>
+        )}
     </FormModal>
   );
 };
@@ -578,7 +664,9 @@ const Clients: React.FC = () => {
   // State for delete confirmation
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isFetchingClientDetails, setIsFetchingClientDetails] = useState(false);
-  const [fetchClientDetailsError, setFetchClientDetailsError] = useState<string | null>(null);
+  const [fetchClientDetailsError, setFetchClientDetailsError] = useState<
+    string | null
+  >(null);
   const [clientToDelete, setClientToDelete] = useState<number | null>(null);
 
   // State for Client Details Modal
@@ -750,7 +838,8 @@ const Clients: React.FC = () => {
     } catch (err: any) {
       console.error("Error fetching client details:", err);
       setFetchClientDetailsError(
-        err.message || "An unexpected error occurred while fetching client details."
+        err.message ||
+          "An unexpected error occurred while fetching client details."
       );
       // Optionally, close the modal or keep it open with an error message
       // For now, we keep it open, and the modal should display the error
@@ -784,16 +873,25 @@ const Clients: React.FC = () => {
   useEffect(() => {
     const handlePaymentMade = (event: Event) => {
       // Type assertion for CustomEvent
-      const customEvent = event as CustomEvent<{ clientId: number; loanId: number }>;
-      if (customEvent.detail && typeof customEvent.detail.clientId === 'number') {
-        console.log('PaymentMade event received in Clients.tsx for client:', customEvent.detail.clientId); // For debugging
+      const customEvent = event as CustomEvent<{
+        clientId: number;
+        loanId: number;
+      }>;
+      if (
+        customEvent.detail &&
+        typeof customEvent.detail.clientId === "number"
+      ) {
+        console.log(
+          "PaymentMade event received in Clients.tsx for client:",
+          customEvent.detail.clientId
+        ); // For debugging
         refreshOpenClientDetails(customEvent.detail.clientId);
       }
     };
 
-    window.addEventListener('paymentMade', handlePaymentMade);
+    window.addEventListener("paymentMade", handlePaymentMade);
     return () => {
-      window.removeEventListener('paymentMade', handlePaymentMade);
+      window.removeEventListener("paymentMade", handlePaymentMade);
     };
   }, [refreshOpenClientDetails]); // Dependency: refreshOpenClientDetails
 

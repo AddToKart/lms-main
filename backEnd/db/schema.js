@@ -71,7 +71,8 @@ const createTables = async () => {
         FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
         INDEX idx_loans_client (client_id),
         INDEX idx_loans_status (status),
-        INDEX idx_loans_dates (start_date, end_date)
+        INDEX idx_loans_dates (start_date, end_date),
+        INDEX idx_loans_next_due (next_due_date)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
@@ -82,9 +83,7 @@ const createTables = async () => {
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'approved_amount'`
       );
       if (approvedAmountColInfo.length === 0) {
-        console.log(
-          "   Adding 'approved_amount' column to 'loans' table..."
-        );
+        console.log("   Adding 'approved_amount' column to 'loans' table...");
         await pool.execute(
           `ALTER TABLE loans ADD COLUMN approved_amount DECIMAL(15, 2) DEFAULT NULL AFTER loan_amount`
         );
@@ -126,9 +125,7 @@ const createTables = async () => {
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'next_due_date'`
       );
       if (nextDueDateColInfo.length === 0) {
-        console.log(
-          "   Adding 'next_due_date' column to 'loans' table..."
-        );
+        console.log("   Adding 'next_due_date' column to 'loans' table...");
         // Adding next_due_date after 'status' as per the CREATE TABLE definition and previous attempt
         await pool.execute(
           `ALTER TABLE loans ADD COLUMN next_due_date DATE NULL DEFAULT NULL AFTER status`
@@ -149,9 +146,7 @@ const createTables = async () => {
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'payment_frequency'`
       );
       if (paymentFrequencyColInfo.length === 0) {
-        console.log(
-          "   Adding 'payment_frequency' column to 'loans' table..."
-        );
+        console.log("   Adding 'payment_frequency' column to 'loans' table...");
         await pool.execute(
           `ALTER TABLE loans ADD COLUMN payment_frequency VARCHAR(20) DEFAULT 'monthly' AFTER next_due_date`
         );
