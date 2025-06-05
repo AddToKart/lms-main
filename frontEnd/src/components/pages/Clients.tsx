@@ -534,7 +534,7 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
                               <Badge
                                 variant={
                                   loan.status === "Overdue"
-                                    ? "destructive"
+                                    ? "danger"
                                     : loan.status === "Paid"
                                     ? "default"
                                     : "outline"

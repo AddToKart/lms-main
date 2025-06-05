@@ -7,10 +7,11 @@ export interface ApiResponse<T = any> {
   error?: string;
 }
 
+// Allow returning raw Response for file downloads
 export const apiRequest = async <T = any>(
   endpoint: string,
   options: RequestInit = {}
-): Promise<ApiResponse<T>> => {
+): Promise<ApiResponse<T> | Response> => {
   try {
     const token = localStorage.getItem("token");
 
@@ -41,6 +42,13 @@ export const apiRequest = async <T = any>(
       );
     }
 
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) {
+      // For Excel files, return the raw response for the browser to handle download
+      return response;
+    }
+
+    // For other content types, parse as JSON
     const data = await response.json();
     return data;
   } catch (error) {

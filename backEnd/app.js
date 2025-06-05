@@ -7,19 +7,43 @@ dotenv.config();
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: 'http://localhost:5173', // Adjust if your frontend port is different
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'] // Added PATCH and ensured OPTIONS is present
-}));
+app.use(
+  cors({
+    origin: "http://localhost:5173", // Adjust if your frontend port is different
+    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], // Added PATCH and ensured OPTIONS is present
+  })
+);
 app.use(express.json());
 
-// MongoDB connection code removed as per user request (using MySQL)
-// Routes
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/clients", require("./routes/clientRoutes"));
-app.use("/api/loans", require("./routes/loanRoutes"));
-app.use("/api/payments", require("./routes/paymentRoutes"));
+// Add debug logging middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
+// Import routes
+const authRoutes = require("./routes/authRoutes");
+const clientRoutes = require("./routes/clientRoutes");
+const loanRoutes = require("./routes/loanRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+
+// Use routes
+app.use("/api/auth", authRoutes);
+app.use("/api/clients", clientRoutes);
+app.use("/api/loans", loanRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/reports", reportRoutes);
+
+// 404 handler
+app.use((req, res) => {
+  console.log(`404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -13,6 +13,7 @@ const tokenRoutes = require("./routes/tokenRoutes");
 const clientRoutes = require("./routes/clientRoutes");
 const loanRoutes = require("./routes/loanRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 // Import security packages
 const helmet = require("helmet");
@@ -63,6 +64,7 @@ app.use("/api/tokens", tokenRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/loans", loanRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/reports", reportRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
@@ -137,6 +139,7 @@ const startServer = async () => {
       console.log(`   • Loans: ${"/api/loans".gray}`);
       console.log(`   • Payments: ${"/api/payments".gray}`);
       console.log(`   • Tokens: ${"/api/tokens".gray}`);
+      console.log(`   • Reports: ${"/api/reports".gray}`);
       console.log(divider);
       console.log("✨ Server ready to accept connections!".green.bold);
       console.log(divider);

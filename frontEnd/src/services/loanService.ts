@@ -80,7 +80,10 @@ export const getLoans = async (
     if (filters.sort_by) params.append("sort_by", filters.sort_by);
     if (filters.sort_order) params.append("sort_order", filters.sort_order);
 
-    const response = await apiRequest(`/api/loans?${params.toString()}`);
+    const response = await apiRequest<PaginatedResponse<Loan>>(`/api/loans?${params.toString()}`);
+    if (response instanceof Response) {
+      throw new Error('Expected ApiResponse, got raw Response for getLoans');
+    }
     return response;
   } catch (error) {
     console.error("Error fetching loans:", error);
@@ -149,10 +152,13 @@ export const createLoan = async (
   data: LoanFormData
 ): Promise<ApiResponse<Loan>> => {
   try {
-    const response = await apiRequest("/api/loans", {
+    const response = await apiRequest<Loan>("/api/loans", {
       method: "POST",
       body: JSON.stringify(data),
     });
+    if (response instanceof Response) {
+      throw new Error('Expected ApiResponse, got raw Response for createLoan');
+    }
     return response;
   } catch (error) {
     console.error("Error creating loan:", error);
@@ -165,10 +171,13 @@ export const updateLoan = async (
   data: Partial<LoanFormData>
 ): Promise<ApiResponse<Loan>> => {
   try {
-    const response = await apiRequest(`/api/loans/${id}`, {
+    const response = await apiRequest<Loan>(`/api/loans/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
+    if (response instanceof Response) {
+      throw new Error('Expected ApiResponse, got raw Response for updateLoan');
+    }
     return response;
   } catch (error) {
     console.error("Error updating loan:", error);
@@ -178,9 +187,12 @@ export const updateLoan = async (
 
 export const deleteLoan = async (id: number): Promise<ApiResponse<void>> => {
   try {
-    const response = await apiRequest(`/api/loans/${id}`, {
+    const response = await apiRequest<void>(`/api/loans/${id}`, {
       method: "DELETE",
     });
+    if (response instanceof Response) {
+      throw new Error('Expected ApiResponse, got raw Response for deleteLoan');
+    }
     return response;
   } catch (error) {
     console.error("Error deleting loan:", error);
@@ -197,10 +209,13 @@ export const approveLoan = async (
   }
 ): Promise<ApiResponse<Loan>> => {
   try {
-    const response = await apiRequest(`/api/loans/${id}/approve`, {
+    const response = await apiRequest<Loan>(`/api/loans/${id}/approve`, {
       method: "POST",
       body: JSON.stringify(data),
     });
+    if (response instanceof Response) {
+      throw new Error('Expected ApiResponse, got raw Response for approveLoan');
+    }
     return response;
   } catch (error) {
     console.error("Error approving loan:", error);
@@ -252,7 +267,10 @@ export const getClientsWithLoans = async (): Promise<ApiResponse<Client[]>> => {
 
 export const getLoanStats = async (): Promise<ApiResponse<LoanStats>> => {
   try {
-    const response = await apiRequest("/api/loans/stats");
+    const response = await apiRequest<LoanStats>("/api/loans/stats");
+    if (response instanceof Response) {
+      throw new Error('Expected ApiResponse, got raw Response for getLoanStats');
+    }
     return response;
   } catch (error) {
     console.error("Error fetching loan stats:", error);

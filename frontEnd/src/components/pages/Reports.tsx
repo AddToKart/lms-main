@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FiBarChart,
   FiUsers,
@@ -12,8 +12,11 @@ import {
   FiEye,
   FiPhone,
   FiMail,
+  FiRefreshCw,
+  FiCreditCard, // Add this import
 } from "react-icons/fi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ApiResponse } from "../../services/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -25,6 +28,32 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  getLoanSummaryReport,
+  getClientSummaryReport,
+  getPaymentHistoryReport,
+  getOverdueLoansReport,
+  getDashboardAnalytics,
+  exportReport,
+  LoanSummaryData,
+  ClientSummaryData,
+  PaymentHistoryData,
+  OverdueLoanData,
+  DashboardAnalytics,
+} from "../../services/reportService";
+
+interface JsonExportApiResponse extends ApiResponse<any> {
+  meta?: {
+    filename?: string;
+  };
+}
 
 type ReportType =
   | "loanSummary"
@@ -126,148 +155,100 @@ const Reports: React.FC = () => {
     to: new Date().toISOString().split("T")[0],
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const loanSummaryData = [
-    { month: "January", newLoans: 12, totalAmount: 45000, avgInterest: 8.5 },
-    { month: "February", newLoans: 15, totalAmount: 52000, avgInterest: 8.2 },
-    { month: "March", newLoans: 18, totalAmount: 67000, avgInterest: 7.9 },
-    { month: "April", newLoans: 14, totalAmount: 55000, avgInterest: 8.1 },
-    { month: "May", newLoans: 16, totalAmount: 61000, avgInterest: 8.0 },
-  ];
-
-  const clientSummaryData = [
-    {
-      id: 1,
-      name: "John Doe",
-      totalLoans: 3,
-      activeLoans: 2,
-      totalBorrowed: 15000,
-      paymentStatus: "Good",
-    },
-    {
-      id: 2,
-      name: "Jane Smith",
-      totalLoans: 1,
-      activeLoans: 1,
-      totalBorrowed: 10000,
-      paymentStatus: "Good",
-    },
-    {
-      id: 3,
-      name: "Michael Johnson",
-      totalLoans: 2,
-      activeLoans: 1,
-      totalBorrowed: 7500,
-      paymentStatus: "Warning",
-    },
-    {
-      id: 4,
-      name: "Sarah Williams",
-      totalLoans: 1,
-      activeLoans: 1,
-      totalBorrowed: 5000,
-      paymentStatus: "Good",
-    },
-    {
-      id: 5,
-      name: "Robert Brown",
-      totalLoans: 2,
-      activeLoans: 0,
-      totalBorrowed: 8000,
-      paymentStatus: "Completed",
-    },
-  ];
-
-  const paymentHistoryData = [
-    {
-      date: "2024-05-01",
-      totalPayments: 12,
-      totalAmount: 4850,
-      onTimePayments: 10,
-      latePayments: 2,
-    },
-    {
-      date: "2024-05-02",
-      totalPayments: 8,
-      totalAmount: 3200,
-      onTimePayments: 8,
-      latePayments: 0,
-    },
-    {
-      date: "2024-05-03",
-      totalPayments: 5,
-      totalAmount: 2100,
-      onTimePayments: 4,
-      latePayments: 1,
-    },
-    {
-      date: "2024-05-04",
-      totalPayments: 10,
-      totalAmount: 4050,
-      onTimePayments: 9,
-      latePayments: 1,
-    },
-    {
-      date: "2024-05-05",
-      totalPayments: 15,
-      totalAmount: 6200,
-      onTimePayments: 14,
-      latePayments: 1,
-    },
-  ];
-
-  const overdueLoansData = [
-    {
-      id: 3,
-      clientName: "Michael Johnson",
-      daysOverdue: 15,
-      amountDue: 750,
-      totalBalance: 1500,
-      contactInfo: "(555) 456-7890",
-    },
-    {
-      id: 7,
-      clientName: "Emily Davis",
-      daysOverdue: 30,
-      amountDue: 1200,
-      totalBalance: 4800,
-      contactInfo: "(555) 222-3333",
-    },
-    {
-      id: 12,
-      clientName: "David Wilson",
-      daysOverdue: 10,
-      amountDue: 450,
-      totalBalance: 3750,
-      contactInfo: "(555) 777-8888",
-    },
-    {
-      id: 15,
-      clientName: "Jennifer Garcia",
-      daysOverdue: 5,
-      amountDue: 650,
-      totalBalance: 5850,
-      contactInfo: "(555) 111-9999",
-    },
-  ];
-
-  // Calculate summary stats
-  const totalLoans = loanSummaryData.reduce(
-    (sum, item) => sum + item.newLoans,
-    0
+  // Data states
+  const [loanSummaryData, setLoanSummaryData] = useState<LoanSummaryData[]>([]);
+  const [clientSummaryData, setClientSummaryData] = useState<
+    ClientSummaryData[]
+  >([]);
+  const [paymentHistoryData, setPaymentHistoryData] = useState<
+    PaymentHistoryData[]
+  >([]);
+  const [overdueLoansData, setOverdueLoansData] = useState<OverdueLoanData[]>(
+    []
   );
-  const totalAmount = loanSummaryData.reduce(
-    (sum, item) => sum + item.totalAmount,
-    0
-  );
-  const avgInterest = (
-    loanSummaryData.reduce((sum, item) => sum + item.avgInterest, 0) /
-    loanSummaryData.length
-  ).toFixed(2);
-  const overdueCount = overdueLoansData.length;
+  const [dashboardAnalytics, setDashboardAnalytics] =
+    useState<DashboardAnalytics | null>(null);
 
-  const handleReportChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedReport(e.target.value as ReportType);
+  // Load data on component mount
+  useEffect(() => {
+    loadAllData();
+  }, []);
+
+  // Reload data when date range changes
+  useEffect(() => {
+    if (
+      selectedReport === "loanSummary" ||
+      selectedReport === "paymentHistory"
+    ) {
+      loadReportData();
+    }
+  }, [dateRange, selectedReport]);
+
+  const loadAllData = async () => {
+    setIsLoading(true);
+    try {
+      await Promise.all([loadDashboardAnalytics(), loadReportData()]);
+    } catch (error) {
+      console.error("Error loading reports data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadDashboardAnalytics = async () => {
+    try {
+      const response = await getDashboardAnalytics();
+      if (response.success) {
+        setDashboardAnalytics(response.data);
+      }
+    } catch (error) {
+      console.error("Error loading dashboard analytics:", error);
+    }
+  };
+
+  const loadReportData = async () => {
+    try {
+      switch (selectedReport) {
+        case "loanSummary":
+          const loanResponse = await getLoanSummaryReport(
+            dateRange.from,
+            dateRange.to
+          );
+          if (loanResponse.success) {
+            setLoanSummaryData(loanResponse.data);
+          }
+          break;
+        case "clientSummary":
+          const clientResponse = await getClientSummaryReport();
+          if (clientResponse.success) {
+            setClientSummaryData(clientResponse.data);
+          }
+          break;
+        case "paymentHistory":
+          const paymentResponse = await getPaymentHistoryReport(
+            dateRange.from,
+            dateRange.to
+          );
+          if (paymentResponse.success) {
+            setPaymentHistoryData(paymentResponse.data);
+          }
+          break;
+        case "overdueLoans":
+          const overdueResponse = await getOverdueLoansReport();
+          if (overdueResponse.success) {
+            setOverdueLoansData(overdueResponse.data);
+          }
+          break;
+      }
+    } catch (error) {
+      console.error("Error loading report data:", error);
+    }
+  };
+
+  const handleReportChange = (value: ReportType) => {
+    setSelectedReport(value);
   };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -278,12 +259,55 @@ const Reports: React.FC = () => {
     });
   };
 
-  const handleExport = () => {
+  const handleExport = async (exportFormat: "json" | "excel" = "excel") => {
     setIsGenerating(true);
-    // Simulate export process
-    setTimeout(() => {
+    try {
+      const reportTypeMap = {
+        loanSummary: "loan_summary" as const,
+        clientSummary: "client_summary" as const,
+        paymentHistory: "payment_history" as const,
+        overdueLoans: "overdue_loans" as const,
+      };
+
+      const response = await exportReport(reportTypeMap[selectedReport], exportFormat);
+
+      if (response instanceof Response) {
+        // Handle raw Response (expected for Excel)
+        if (response.ok) {
+          console.log('Excel export initiated, browser should handle download.');
+          // The browser will handle the download based on Content-Disposition
+        } else {
+          const errorText = await response.text();
+          console.error("Error exporting report (Excel file response):", response.status, errorText);
+          // TODO: Show error to user via toast or alert
+        }
+      } else {
+        // Handle ApiResponse (expected for JSON or errors)
+        const jsonResponse = response as JsonExportApiResponse;
+        if (jsonResponse.success) {
+          // Create and download JSON file
+          const dataStr = JSON.stringify(jsonResponse.data, null, 2);
+          const dataBlob = new Blob([dataStr], { type: "application/json" });
+          const url = URL.createObjectURL(dataBlob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${jsonResponse.meta?.filename || reportTypeMap[selectedReport] + "_report"}.json`;
+          link.click();
+          URL.revokeObjectURL(url);
+        } else {
+          console.error(
+            "Error exporting report (JSON response):",
+            jsonResponse.message
+          );
+          // TODO: Show error to user via toast or alert
+        }
+      }
+    } catch (error) {
+      console.error("Error in handleExport function:", error);
+      // TODO: Show error to user via toast or alert
+    } finally {
       setIsGenerating(false);
-    }, 2000);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -291,35 +315,33 @@ const Reports: React.FC = () => {
       case "Good":
         return (
           <Badge
-            variant="success"
-            className="bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md"
+            variant="default"
+            className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
           >
-            <div className="w-2 h-2 bg-white rounded-full mr-1.5"></div>
             Good
           </Badge>
         );
       case "Warning":
+      case "Overdue":
         return (
           <Badge
-            variant="warning"
-            className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-md"
+            variant="danger"
+            className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
           >
-            <div className="w-2 h-2 bg-white rounded-full mr-1.5"></div>
-            Warning
+            {status}
           </Badge>
         );
       case "Completed":
         return (
           <Badge
             variant="secondary"
-            className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-md"
+            className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
           >
-            <div className="w-2 h-2 bg-white rounded-full mr-1.5"></div>
             Completed
           </Badge>
         );
       default:
-        return <Badge variant="secondary">Unknown</Badge>;
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
@@ -332,188 +354,259 @@ const Reports: React.FC = () => {
     }).format(amount);
   };
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   const renderReportContent = () => {
-    const reportConfigs = {
-      loanSummary: {
-        title: "Loan Summary Report",
-        description:
-          "Monthly summary of new loans, total amount disbursed, and average interest rates.",
-        icon: <FiBarChart className="h-5 w-5" />,
-        color: "text-blue-600 dark:text-blue-400",
-        data: loanSummaryData,
-        columns: [
-          "Month",
-          "New Loans",
-          "Total Amount",
-          "Average Interest Rate",
-        ],
-        renderRow: (item: any, index: number) => (
-          <TableRow
-            key={index}
-            className="hover:bg-muted/40 transition-all duration-300"
-          >
-            <TableCell className="font-medium">{item.month}</TableCell>
-            <TableCell>{item.newLoans}</TableCell>
-            <TableCell>{formatCurrency(item.totalAmount)}</TableCell>
-            <TableCell>{item.avgInterest}%</TableCell>
-          </TableRow>
-        ),
-      },
-      clientSummary: {
-        title: "Client Summary Report",
-        description:
-          "Summary of clients' borrowing history and current loan status.",
-        icon: <FiUsers className="h-5 w-5" />,
-        color: "text-green-600 dark:text-green-400",
-        data: clientSummaryData,
-        columns: [
-          "Client ID",
-          "Name",
-          "Total Loans",
-          "Active Loans",
-          "Total Borrowed",
-          "Payment Status",
-        ],
-        renderRow: (client: any) => (
-          <TableRow
-            key={client.id}
-            className="hover:bg-muted/40 transition-all duration-300"
-          >
-            <TableCell className="font-medium">#{client.id}</TableCell>
-            <TableCell>{client.name}</TableCell>
-            <TableCell>{client.totalLoans}</TableCell>
-            <TableCell>{client.activeLoans}</TableCell>
-            <TableCell>{formatCurrency(client.totalBorrowed)}</TableCell>
-            <TableCell>{getStatusBadge(client.paymentStatus)}</TableCell>
-          </TableRow>
-        ),
-      },
-      paymentHistory: {
-        title: "Payment History Report",
-        description:
-          "Daily record of payments received, including on-time and late payments.",
-        icon: <FiDollarSign className="h-5 w-5" />,
-        color: "text-purple-600 dark:text-purple-400",
-        data: paymentHistoryData,
-        columns: [
-          "Date",
-          "Total Payments",
-          "Total Amount",
-          "On-Time Payments",
-          "Late Payments",
-        ],
-        renderRow: (item: any, index: number) => (
-          <TableRow
-            key={index}
-            className="hover:bg-muted/40 transition-all duration-300"
-          >
-            <TableCell className="font-medium">{item.date}</TableCell>
-            <TableCell>{item.totalPayments}</TableCell>
-            <TableCell>{formatCurrency(item.totalAmount)}</TableCell>
-            <TableCell>{item.onTimePayments}</TableCell>
-            <TableCell>{item.latePayments}</TableCell>
-          </TableRow>
-        ),
-      },
-      overdueLoans: {
-        title: "Overdue Loans Report",
-        description:
-          "List of loans with overdue payments that require follow-up.",
-        icon: <FiAlertTriangle className="h-5 w-5" />,
-        color: "text-red-600 dark:text-red-400",
-        data: overdueLoansData,
-        columns: [
-          "Loan ID",
-          "Client Name",
-          "Days Overdue",
-          "Amount Due",
-          "Total Balance",
-          "Contact Info",
-          "Actions",
-        ],
-        renderRow: (loan: any) => (
-          <TableRow
-            key={loan.id}
-            className="hover:bg-muted/40 transition-all duration-300"
-          >
-            <TableCell className="font-medium">#{loan.id}</TableCell>
-            <TableCell>{loan.clientName}</TableCell>
-            <TableCell>
-              <Badge variant="danger" className="text-xs">
-                {loan.daysOverdue} days
-              </Badge>
-            </TableCell>
-            <TableCell>{formatCurrency(loan.amountDue)}</TableCell>
-            <TableCell>{formatCurrency(loan.totalBalance)}</TableCell>
-            <TableCell>
-              <div className="flex items-center gap-2">
-                <FiPhone className="w-3 h-3" />
-                <span className="text-xs">{loan.contactInfo}</span>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="icon" className="h-6 w-6">
-                  <FiPhone className="h-3 w-3" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6">
-                  <FiMail className="h-3 w-3" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ),
-      },
-    };
-
-    const config = reportConfigs[selectedReport];
-
-    return (
-      <Card className="hover-lift animate-fade-in-right border-border/50 bg-gradient-to-br from-background via-background to-muted/5 overflow-hidden">
-        <CardHeader className="border-b border-border/50 bg-gradient-to-r from-muted/30 to-transparent">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <div className={`${config.color}`}>{config.icon}</div>
-              {config.title}
-            </CardTitle>
-            <Button
-              onClick={handleExport}
-              disabled={isGenerating}
-              className="hover-lift"
-            >
-              {isGenerating ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white mr-2"></div>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <FiDownload className="mr-2 h-4 w-4" />
-                  Export
-                </>
-              )}
-            </Button>
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="flex items-center gap-3">
+            <FiRefreshCw className="h-6 w-6 animate-spin text-primary" />
+            <span className="text-lg font-medium">Loading report data...</span>
           </div>
-          <p className="text-muted-foreground text-sm">{config.description}</p>
-        </CardHeader>
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border/50 hover:bg-muted/30">
-              {config.columns.map((column) => (
-                <TableHead key={column} className="font-semibold">
-                  {column}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {config.data.map((item: any, index: number) =>
-              config.renderRow(item, index)
-            )}
-          </TableBody>
-        </Table>
-      </Card>
-    );
+        </div>
+      );
+    }
+
+    switch (selectedReport) {
+      case "loanSummary":
+        return (
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Month</TableHead>
+                    <TableHead className="text-right">New Loans</TableHead>
+                    <TableHead className="text-right">Total Amount</TableHead>
+                    <TableHead className="text-right">Avg Interest</TableHead>
+                    <TableHead className="text-right">Approved</TableHead>
+                    <TableHead className="text-right">Rejected</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loanSummaryData.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">
+                        {new Date(item.month + "-01").toLocaleDateString(
+                          "en-US",
+                          {
+                            year: "numeric",
+                            month: "long",
+                          }
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {item.new_loans}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(item.total_amount)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {item.avg_interest.toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right text-green-600">
+                        {item.approved_count}
+                      </TableCell>
+                      <TableCell className="text-right text-red-600">
+                        {item.rejected_count}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        );
+
+      case "clientSummary":
+        return (
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client Name</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead className="text-right">Total Loans</TableHead>
+                    <TableHead className="text-right">Active Loans</TableHead>
+                    <TableHead className="text-right">Total Borrowed</TableHead>
+                    <TableHead className="text-right">
+                      Current Balance
+                    </TableHead>
+                    <TableHead>Payment Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clientSummaryData.map((client) => (
+                    <TableRow key={client.id}>
+                      <TableCell className="font-medium">
+                        {client.name}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-sm">
+                            <FiMail className="h-3 w-3" />
+                            {client.email}
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <FiPhone className="h-3 w-3" />
+                            {client.phone}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {client.total_loans}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {client.active_loans}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(client.total_borrowed)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(client.current_balance)}
+                      </TableCell>
+                      <TableCell>
+                        {getStatusBadge(client.payment_status)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        );
+
+      case "paymentHistory":
+        return (
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Total Payments</TableHead>
+                    <TableHead className="text-right">Total Amount</TableHead>
+                    <TableHead className="text-right">On Time</TableHead>
+                    <TableHead className="text-right">Late</TableHead>
+                    <TableHead className="text-right">Avg Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paymentHistoryData.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">
+                        {formatDate(item.date)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {item.total_payments}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(item.total_amount)}
+                      </TableCell>
+                      <TableCell className="text-right text-green-600">
+                        {item.on_time_payments}
+                      </TableCell>
+                      <TableCell className="text-right text-red-600">
+                        {item.late_payments}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(item.avg_payment_amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        );
+
+      case "overdueLoans":
+        return (
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client Name</TableHead>
+                    <TableHead>Contact Info</TableHead>
+                    <TableHead className="text-right">Days Overdue</TableHead>
+                    <TableHead className="text-right">Amount Due</TableHead>
+                    <TableHead className="text-right">Total Balance</TableHead>
+                    <TableHead>Severity</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {overdueLoansData.map((loan) => (
+                    <TableRow key={loan.id}>
+                      <TableCell className="font-medium">
+                        {loan.client_name}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-sm">
+                            <FiPhone className="h-3 w-3" />
+                            {loan.phone}
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <FiMail className="h-3 w-3" />
+                            {loan.email}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span
+                          className={`font-semibold ${
+                            loan.days_overdue > 30
+                              ? "text-red-600"
+                              : loan.days_overdue > 7
+                              ? "text-yellow-600"
+                              : "text-orange-600"
+                          }`}
+                        >
+                          {loan.days_overdue} days
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(loan.amount_due)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(loan.loan_amount)}
+                      </TableCell>
+                      <TableCell>
+                        {getStatusBadge(loan.overdue_severity)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm">
+                            <FiPhone className="h-3 w-3 mr-1" />
+                            Call
+                          </Button>
+                          <Button variant="outline" size="sm">
+                            <FiMail className="h-3 w-3 mr-1" />
+                            Email
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
   };
 
   return (
@@ -522,51 +615,118 @@ const Reports: React.FC = () => {
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 animate-slide-down">
         <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:16px_16px]"></div>
         <div className="relative flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
-                <FiBarChart className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                  Reports & Analytics
-                </h1>
-                <p className="text-muted-foreground text-lg">
-                  Generate comprehensive reports and insights
-                </p>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-xl">
+              <FiBarChart className="w-6 h-6 text-primary-foreground" />
             </div>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">
+                Reports & Analytics
+              </h1>
+              <p className="text-muted-foreground">
+                Comprehensive insights into your loan management system
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={loadAllData}
+              disabled={isLoading}
+              className="hover-lift"
+            >
+              <FiRefreshCw
+                className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </Button>
+            <Button
+              onClick={() => handleExport('excel')}
+              disabled={isGenerating}
+              className="bg-gradient-to-r from-primary to-primary/90 hover-lift"
+            >
+              <FiDownload className="mr-2 h-4 w-4" />
+              {isGenerating ? "Generating..." : "Export"}
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Report Controls */}
+      {/* Enhanced Stats Cards Grid */}
+      {dashboardAnalytics && (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
+          <StatsCard
+            title="Active Loans"
+            value={dashboardAnalytics.overall_stats.total_active_loans}
+            icon={<FiCreditCard className="h-5 w-5" />}
+            variant="default"
+            subtitle="Current portfolio"
+          />
+          <StatsCard
+            title="Total Outstanding"
+            value={formatCurrency(
+              dashboardAnalytics.overall_stats.total_outstanding
+            )}
+            icon={<FiDollarSign className="h-5 w-5" />}
+            variant="success"
+            subtitle="Amount to collect"
+          />
+          <StatsCard
+            title="Active Clients"
+            value={dashboardAnalytics.overall_stats.total_active_clients}
+            icon={<FiUsers className="h-5 w-5" />}
+            variant="default"
+            subtitle="Borrowers with loans"
+          />
+          <StatsCard
+            title="Monthly Collections"
+            value={formatCurrency(
+              dashboardAnalytics.overall_stats.monthly_collections
+            )}
+            icon={<FiTrendingUp className="h-5 w-5" />}
+            variant="success"
+            subtitle="Last 30 days"
+          />
+        </div>
+      )}
+
+      {/* Enhanced Search and Filters */}
       <Card className="hover-lift animate-scale-in border-border/50 bg-card">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <FiFilter className="w-5 h-5 text-primary" />
-            Report Configuration
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardHeader>
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <CardTitle className="flex items-center gap-2">
+                <FiFilter className="h-5 w-5" />
+                Report Filters
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Customize your report parameters
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">
                 Report Type
               </label>
-              <select
-                value={selectedReport}
-                onChange={handleReportChange}
-                className="w-full px-3 py-2 border border-border/50 bg-background rounded-md focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
-              >
-                <option value="loanSummary">Loan Summary</option>
-                <option value="clientSummary">Client Summary</option>
-                <option value="paymentHistory">Payment History</option>
-                <option value="overdueLoans">Overdue Loans</option>
-              </select>
+              <Select value={selectedReport} onValueChange={handleReportChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select report type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="loanSummary">Loan Summary</SelectItem>
+                  <SelectItem value="clientSummary">Client Summary</SelectItem>
+                  <SelectItem value="paymentHistory">
+                    Payment History
+                  </SelectItem>
+                  <SelectItem value="overdueLoans">Overdue Loans</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="text-sm font-medium mb-2 block">
                 From Date
               </label>
               <Input
@@ -574,25 +734,45 @@ const Reports: React.FC = () => {
                 name="from"
                 value={dateRange.from}
                 onChange={handleDateChange}
-                className="border-border/50"
+                className="w-full"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">To Date</label>
+              <label className="text-sm font-medium mb-2 block">To Date</label>
               <Input
                 type="date"
                 name="to"
                 value={dateRange.to}
                 onChange={handleDateChange}
-                className="border-border/50"
+                className="w-full"
               />
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={loadReportData}
+                className="w-full"
+                disabled={isLoading}
+              >
+                <FiEye className="mr-2 h-4 w-4" />
+                Generate Report
+              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Report Content */}
-      {renderReportContent()}
+      <Card className="hover-lift animate-fade-in border-border/50 bg-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FiBarChart className="h-5 w-5" />
+            {selectedReport.charAt(0).toUpperCase() +
+              selectedReport.slice(1).replace(/([A-Z])/g, " $1")}
+            Report
+          </CardTitle>
+        </CardHeader>
+        <CardContent>{renderReportContent()}</CardContent>
+      </Card>
     </div>
   );
 };
