@@ -58,9 +58,9 @@ const createTables = async () => {
         purpose TEXT,
         start_date DATE,
         end_date DATE,
-        status VARCHAR(50) DEFAULT 'pending', -- e.g., pending, approved, active, paid, defaulted, rejected, completed, overdue
-        next_due_date DATE NULL DEFAULT NULL, -- Stores the date of the next expected payment
-        payment_frequency VARCHAR(20) DEFAULT 'monthly', -- e.g., monthly, weekly, bi-weekly
+        status ENUM('pending', 'approved', 'active', 'paid_off', 'defaulted', 'rejected', 'completed', 'overdue') DEFAULT 'pending',
+        next_due_date DATE NULL DEFAULT NULL,
+        payment_frequency VARCHAR(20) DEFAULT 'monthly',
         remaining_balance DECIMAL(15, 2) DEFAULT NULL,
         approval_date DATE NULL,
         approval_notes TEXT,
@@ -190,6 +190,44 @@ const createTables = async () => {
       console.error(
         "   ❌ Error during 'loans' table 'remaining_balance' column check/fix/initialization:",
         fixLoanError.message
+      );
+    }
+
+    // Fix status column type if it exists but is wrong type
+    try {
+      const [statusColInfo] = await pool.execute(
+        `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'status'`
+      );
+
+      if (statusColInfo.length > 0) {
+        const currentType = statusColInfo[0].COLUMN_TYPE.toLowerCase();
+
+        // Check if current type doesn't include 'paid_off'
+        if (!currentType.includes("paid_off")) {
+          console.log(
+            "   🔧 Updating 'status' column type in 'loans' table to include 'paid_off'..."
+          );
+
+          // First, update any existing 'paid' status to 'completed' to avoid data loss
+          await pool.execute(`
+            UPDATE loans SET status = 'completed' WHERE status = 'paid'
+          `);
+
+          // Now modify the column to include all required status values
+          await pool.execute(`
+            ALTER TABLE loans 
+            MODIFY COLUMN status ENUM('pending', 'approved', 'active', 'paid_off', 'defaulted', 'rejected', 'completed', 'overdue') DEFAULT 'pending'
+          `);
+          console.log(
+            "      ✅ Status column updated to ENUM with 'paid_off' included."
+          );
+        }
+      }
+    } catch (fixStatusError) {
+      console.error(
+        "   ❌ Error during 'loans' table 'status' column type check/fix:",
+        fixStatusError.message
       );
     }
 

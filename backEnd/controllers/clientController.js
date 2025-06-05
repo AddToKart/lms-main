@@ -386,20 +386,34 @@ exports.getClientDetails = async (req, res) => {
       status:
         loan.status === "active"
           ? "Active"
-          : loan.status === "paid"
-          ? "Paid"
+          : loan.status === "paid_off"
+          ? "Paid Off"
+          : loan.status === "completed"
+          ? "Completed"
           : loan.status === "overdue"
           ? "Overdue"
           : loan.status === "pending"
           ? "Pending"
           : loan.status === "defaulted"
           ? "Defaulted"
+          : loan.status === "rejected"
+          ? "Rejected"
           : loan.status || "Unknown",
       next_due_date: loan.next_due_date,
     }));
 
-    // 3. Generate upcoming payments from active loans' next_due_date
-    const processedUpcomingPayments = processedLoans
+    // Filter active loans (exclude paid_off, completed, rejected, defaulted)
+    const activeLoans = processedLoans.filter((loan) => {
+      const statusLowerCase = loan.status ? loan.status.toLowerCase() : "";
+      return (
+        statusLowerCase === "active" ||
+        statusLowerCase === "overdue" ||
+        statusLowerCase === "pending"
+      );
+    });
+
+    // 3. Generate upcoming payments from active loans' next_due_date only
+    const processedUpcomingPayments = activeLoans
       .filter((loan) => {
         const statusLowerCase = loan.status ? loan.status.toLowerCase() : "";
         return (
@@ -427,14 +441,13 @@ exports.getClientDetails = async (req, res) => {
       })
       .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
 
-    // 4. Calculate summary statistics
-    const activeLoanCount = processedLoans.filter(
-      (loan) => loan.status.toLowerCase() === "active"
-    ).length;
+    // 4. Calculate summary statistics using only active loans
+    const activeLoanCount = activeLoans.length;
 
-    const totalRemainingBalance = processedLoans
-      .filter((loan) => loan.status.toLowerCase() === "active")
-      .reduce((sum, loan) => sum + loan.remaining_balance, 0);
+    const totalRemainingBalance = activeLoans.reduce(
+      (sum, loan) => sum + loan.remaining_balance,
+      0
+    );
 
     const totalUpcomingPaymentsAmount = processedUpcomingPayments.reduce(
       (sum, payment) => {
@@ -443,10 +456,10 @@ exports.getClientDetails = async (req, res) => {
       0
     );
 
-    // 5. Build response
+    // 5. Build response - return activeLoans instead of all loans for the loans array
     const responseData = {
       ...client,
-      loans: processedLoans,
+      loans: activeLoans, // Only return active loans in the loans array
       upcoming_payments: processedUpcomingPayments,
       active_loans_count: activeLoanCount,
       total_remaining_balance: parseFloat(totalRemainingBalance.toFixed(2)),

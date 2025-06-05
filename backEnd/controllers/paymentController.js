@@ -371,13 +371,48 @@ const createPayment = async (req, res) => {
       responsePayload.new_next_due_date = newNextDueDateSQL;
 
       // Update loan status and next_due_date in the database
-      await connection.query(
-        "UPDATE loans SET status = ?, next_due_date = ?, updated_at = NOW() WHERE id = ?",
-        [newLoanStatus, newNextDueDateSQL, loan_id]
-      );
-      console.log(
-        `[PaymentController DEBUG] Loan ID: ${loan_id} - DB updated. New Status: ${newLoanStatus}, New Next Due Date: ${newNextDueDateSQL}`
-      );
+      try {
+        await connection.query(
+          "UPDATE loans SET status = ?, next_due_date = ?, updated_at = NOW() WHERE id = ?",
+          [newLoanStatus, newNextDueDateSQL, loan_id]
+        );
+        console.log(
+          `[PaymentController DEBUG] Loan ID: ${loan_id} - DB updated. New Status: ${newLoanStatus}, New Next Due Date: ${newNextDueDateSQL}`
+        );
+      } catch (updateError) {
+        console.error(
+          `[PaymentController ERROR] Failed to update loan status/next_due_date for loan ID ${loan_id}:`,
+          updateError
+        );
+
+        // If the update fails due to status constraint, try with a fallback status
+        if (
+          updateError.code === "WARN_DATA_TRUNCATED" &&
+          newLoanStatus === "paid_off"
+        ) {
+          console.log(
+            `[PaymentController DEBUG] Trying fallback status 'completed' for loan ID: ${loan_id}`
+          );
+          try {
+            await connection.query(
+              "UPDATE loans SET status = 'completed', next_due_date = ?, updated_at = NOW() WHERE id = ?",
+              [newNextDueDateSQL, loan_id]
+            );
+            responsePayload.new_loan_status = "completed";
+            console.log(
+              `[PaymentController DEBUG] Loan ID: ${loan_id} - Updated with fallback status 'completed'`
+            );
+          } catch (fallbackError) {
+            console.error(
+              `[PaymentController ERROR] Fallback update also failed for loan ID ${loan_id}:`,
+              fallbackError
+            );
+            throw updateError; // Throw original error
+          }
+        } else {
+          throw updateError;
+        }
+      }
 
       await connection.commit();
       connection.release();

@@ -56,7 +56,7 @@ const tables = [
     loan_amount DECIMAL(15, 2) NOT NULL,
     interest_rate DECIMAL(5, 2) NOT NULL,
     term_months INT NOT NULL,
-    status ENUM('pending', 'approved', 'active', 'paid', 'defaulted', 'rejected') DEFAULT 'pending',
+    status ENUM('pending', 'approved', 'active', 'paid_off', 'defaulted', 'rejected', 'completed', 'overdue') DEFAULT 'pending',
     approved_by INT,
     approved_at DATETIME,
     start_date DATE,

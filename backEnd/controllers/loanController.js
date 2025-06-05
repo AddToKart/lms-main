@@ -46,9 +46,11 @@ exports.getLoans = async (req, res) => {
         "pending",
         "approved",
         "active",
-        "paid",
+        "paid_off",
         "defaulted",
         "rejected",
+        "completed",
+        "overdue",
       ].includes(status)
     ) {
       query += " AND l.status = ?";
@@ -110,9 +112,11 @@ exports.getLoans = async (req, res) => {
         "pending",
         "approved",
         "active",
-        "paid",
+        "paid_off",
         "defaulted",
         "rejected",
+        "completed",
+        "overdue",
       ].includes(status)
     ) {
       countQuery += " AND l.status = ?";
@@ -158,7 +162,7 @@ exports.getLoanStats = async (req, res) => {
         COUNT(*) as total_loans,
         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_loans,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_loans,
-        SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as completed_loans,
+        SUM(CASE WHEN status IN ('paid_off', 'completed') THEN 1 ELSE 0 END) as completed_loans,
         SUM(CASE WHEN status = 'defaulted' THEN 1 ELSE 0 END) as defaulted_loans,
         SUM(loan_amount) as total_amount,
         AVG(loan_amount) as average_amount,
@@ -194,7 +198,7 @@ exports.getActiveLoans = async (req, res) => {
         c.id as client_id
       FROM loans l
       LEFT JOIN clients c ON l.client_id = c.id
-      WHERE l.status IN ('active', 'approved')
+      WHERE l.status IN ('active', 'approved', 'overdue')
       ORDER BY c.first_name, c.last_name
     `;
 
@@ -332,22 +336,17 @@ exports.updateLoan = async (req, res) => {
           [id]
         );
         if (loanRecord.length === 0) {
-          return res
-            .status(404)
-            .json({
-              success: false,
-              message:
-                "Loan not found for fetching start_date when activating.",
-            });
+          return res.status(404).json({
+            success: false,
+            message: "Loan not found for fetching start_date when activating.",
+          });
         }
         if (!loanRecord[0].start_date) {
-          return res
-            .status(400)
-            .json({
-              success: false,
-              message:
-                "Loan start_date is missing in the database. Cannot activate and set next_due_date.",
-            });
+          return res.status(400).json({
+            success: false,
+            message:
+              "Loan start_date is missing in the database. Cannot activate and set next_due_date.",
+          });
         }
         startDateToUse = new Date(loanRecord[0].start_date);
       }
