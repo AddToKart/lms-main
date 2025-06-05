@@ -14,7 +14,7 @@ const createTables = async () => {
         first_name VARCHAR(50) NOT NULL,
         last_name VARCHAR(50) NOT NULL,
         role ENUM('admin', 'manager', 'officer') DEFAULT 'officer',
-        status ENUM('active', 'inactive') DEFAULT 'active',
+        is_active BOOLEAN DEFAULT true, -- Changed from status ENUM
         last_login TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -347,9 +347,9 @@ const insertDefaultAdmin = async () => {
 
       await pool.execute(
         `
-        INSERT INTO users (username, email, password_hash, first_name, last_name, role, status)
+        INSERT INTO users (username, email, password_hash, first_name, last_name, role, is_active)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
+      `, // Changed 'status' to 'is_active'
         [
           "admin",
           "admin@lms.com",
@@ -357,7 +357,7 @@ const insertDefaultAdmin = async () => {
           "System",
           "Administrator",
           "admin",
-          "active",
+          true, // Changed 'active' to true
         ]
       );
 

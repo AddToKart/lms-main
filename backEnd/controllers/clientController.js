@@ -83,6 +83,36 @@ exports.getClients = async (req, res) => {
   }
 };
 
+// Get clients with active loans
+exports.getClientsWithActiveLoans = async (req, res) => {
+  try {
+    const query = `
+      SELECT DISTINCT
+        c.id,
+        c.first_name,
+        c.last_name
+      FROM clients c
+      JOIN loans l ON c.id = l.client_id
+      WHERE l.status = 'active'
+      ORDER BY c.last_name, c.first_name;
+    `;
+
+    const [clients] = await pool.query(query);
+
+    res.status(200).json({
+      success: true,
+      data: clients,
+    });
+  } catch (error) {
+    console.error("Error fetching clients with active loans:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch clients with active loans",
+      error: error.message,
+    });
+  }
+};
+
 // Get client by ID
 exports.getClientById = async (req, res) => {
   try {

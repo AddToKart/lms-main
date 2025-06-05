@@ -14,6 +14,7 @@ import {
   FiTrash2,
   FiX,
   FiFilter,
+  FiUser,
   FiUsers,
   FiUserCheck,
   FiUserX,
@@ -26,6 +27,9 @@ import {
   FiMoreVertical,
   FiTrendingUp,
   FiDownload,
+  FiDollarSign, // Added for currency display
+  FiCreditCard, // Added for loan type icon
+  FiAlertTriangle, // Added for overdue status
 } from "react-icons/fi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +47,32 @@ import {
 // Add extended interface for editing client with ID
 interface ClientFormDataWithId extends ClientFormData {
   id: number;
+}
+
+// New interfaces for Client Details Modal
+interface ClientLoan {
+  id: string;
+  type: string;
+  amount: number;
+  remainingBalance: number;
+  interestRate: number;
+  nextDueDate: string;
+  status: "Active" | "Overdue" | "Paid";
+}
+
+interface ClientUpcomingPayment {
+  loanId: string;
+  loanType: string;
+  amountDue: number;
+  dueDate: string;
+}
+
+interface ClientDetailsData extends Client {
+  loans: ClientLoan[];
+  upcomingPayments: ClientUpcomingPayment[];
+  totalRemainingBalance: number;
+  totalUpcomingPaymentsAmount: number;
+  activeLoansCount: number;
 }
 
 // Modal component for confirmation dialogs
@@ -110,6 +140,7 @@ interface FormModalProps {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  size?: "default" | "large" | "xlarge" | "full"; // Added size prop
 }
 
 const FormModal: React.FC<FormModalProps> = ({
@@ -117,8 +148,22 @@ const FormModal: React.FC<FormModalProps> = ({
   title,
   onClose,
   children,
+  size = "default", // Default size
 }) => {
   if (!isOpen) return null;
+
+  const getSizeClass = () => {
+    switch (size) {
+      case "large":
+        return "max-w-6xl";
+      case "xlarge":
+        return "max-w-7xl";
+      case "full":
+        return "max-w-full w-full h-full";
+      default:
+        return "max-w-4xl";
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -126,7 +171,9 @@ const FormModal: React.FC<FormModalProps> = ({
         className="absolute inset-0 bg-black/60 backdrop-blur-md"
         onClick={onClose}
       ></div>
-      <Card className="relative max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl border-border/50 bg-background/95 backdrop-blur-xl animate-scale-in">
+      <Card
+        className={`relative w-full ${getSizeClass()} max-h-[90vh] overflow-hidden shadow-2xl border-border/50 bg-background/95 backdrop-blur-xl animate-scale-in`}
+      >
         <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 to-primary/10">
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-3">
@@ -145,7 +192,7 @@ const FormModal: React.FC<FormModalProps> = ({
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="overflow-y-auto max-h-[calc(90vh-120px)] thin-scrollbar">
+        <CardContent className="p-6 overflow-y-auto max-h-[calc(90vh-120px)] thin-scrollbar">
           {children}
         </CardContent>
       </Card>
@@ -235,6 +282,265 @@ const StatsCard: React.FC<StatsCardProps> = ({
   );
 };
 
+// ClientDetailsModal Component (New - extracted)
+interface ClientDetailsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  clientDetails: ClientDetailsData | null;
+  // Pass helper functions if they are not globally available or defined in a shared utility
+  formatDate: (dateString: string) => string;
+  getStatusBadge: (status: string) => React.ReactNode;
+}
+
+const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
+  isOpen,
+  onClose,
+  clientDetails,
+  formatDate,
+  getStatusBadge,
+}) => {
+  if (!isOpen || !clientDetails) return null;
+
+  return (
+    <FormModal
+      isOpen={isOpen}
+      title={`Client Details: ${clientDetails.first_name} ${clientDetails.last_name}`}
+      onClose={onClose}
+      size="large" // Use the new size prop for a "big modal"
+    >
+      <div className="p-2 space-y-6 animate-scale-in">
+        {" "}
+        {/* Removed max-w-6xl from here */}
+        {/* Client Info Summary */}
+        <Card className="bg-muted/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <FiUser className="text-primary" />
+              Client Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div>
+              <span className="font-medium text-muted-foreground">
+                Full Name:
+              </span>
+              <p className="text-foreground">
+                {clientDetails.first_name} {clientDetails.last_name}
+              </p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground">Email:</span>
+              <p className="text-foreground">{clientDetails.email || "N/A"}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground">Phone:</span>
+              <p className="text-foreground">{clientDetails.phone || "N/A"}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground">
+                Address:
+              </span>
+              <p className="text-foreground">
+                {clientDetails.address || "N/A"}
+                {clientDetails.city && `, ${clientDetails.city}`}
+                {clientDetails.state && `, ${clientDetails.state}`}
+              </p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground">Status:</span>
+              {/* Changed <p> to <div> to avoid nesting div (from Badge) inside p */}
+              <div>{getStatusBadge(clientDetails.status)}</div>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground">Joined:</span>
+              <p className="text-foreground">
+                {formatDate(clientDetails.created_at)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        {/* Financial Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="hover-lift">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Active Loans
+              </CardTitle>
+              <FiCreditCard className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {clientDetails.activeLoansCount}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="hover-lift">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Remaining Balance
+              </CardTitle>
+              <FiDollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                $
+                {clientDetails.totalRemainingBalance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="hover-lift">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Upcoming Payments Due
+              </CardTitle>
+              <FiCalendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                $
+                {clientDetails.totalUpcomingPaymentsAmount.toLocaleString(
+                  undefined,
+                  { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        {/* Active Loans Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <FiCreditCard className="text-primary" />
+              Active Loans
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {clientDetails.loans.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Loan ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Remaining</TableHead>
+                    <TableHead className="text-right">Interest</TableHead>
+                    <TableHead>Next Due</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clientDetails.loans.map((loan) => (
+                    <TableRow key={loan.id}>
+                      <TableCell>{loan.id}</TableCell>
+                      <TableCell>{loan.type}</TableCell>
+                      <TableCell className="text-right">
+                        $
+                        {loan.amount.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        $
+                        {loan.remainingBalance.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {loan.interestRate.toFixed(1)}%
+                      </TableCell>
+                      <TableCell>{formatDate(loan.nextDueDate)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            loan.status === "Overdue"
+                              ? "danger"
+                              : loan.status === "Paid"
+                              ? "success"
+                              : "outline"
+                          }
+                          className={
+                            loan.status === "Overdue"
+                              ? "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30"
+                              : loan.status === "Paid"
+                              ? "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30"
+                              : ""
+                          }
+                        >
+                          {loan.status === "Overdue" && (
+                            <FiAlertTriangle className="mr-1 h-3 w-3" />
+                          )}
+                          {loan.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">
+                No active loans found for this client.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        {/* Upcoming Payments Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <FiCalendar className="text-primary" />
+              Upcoming Payments
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {clientDetails.upcomingPayments.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Loan ID</TableHead>
+                    <TableHead>Loan Type</TableHead>
+                    <TableHead className="text-right">Amount Due</TableHead>
+                    <TableHead>Due Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clientDetails.upcomingPayments.map((payment) => (
+                    <TableRow key={payment.loanId + payment.dueDate}>
+                      <TableCell>{payment.loanId}</TableCell>
+                      <TableCell>{payment.loanType}</TableCell>
+                      <TableCell className="text-right">
+                        $
+                        {payment.amountDue.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell>{formatDate(payment.dueDate)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">
+                No upcoming payments found for this client.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <div className="flex justify-end pt-4">
+          <Button variant="outline" onClick={onClose} className="hover-lift">
+            <FiX className="mr-2 h-4 w-4" /> Close
+          </Button>
+        </div>
+      </div>
+    </FormModal>
+  );
+};
+
 const Clients: React.FC = () => {
   // State for clients data and pagination
   const [clients, setClients] = useState<Client[]>([]);
@@ -260,6 +566,12 @@ const Clients: React.FC = () => {
   // State for delete confirmation
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<number | null>(null);
+
+  // State for Client Details Modal
+  const [selectedClientForDetails, setSelectedClientForDetails] =
+    useState<ClientDetailsData | null>(null);
+  const [isClientDetailsModalOpen, setIsClientDetailsModalOpen] =
+    useState(false);
 
   // Fetch clients on component mount and when filters change
   useEffect(() => {
@@ -377,12 +689,92 @@ const Clients: React.FC = () => {
 
   // Format date for display
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }).format(date);
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return "Invalid Date";
+      }
+      return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }).format(date);
+    } catch (e) {
+      console.error("Error formatting date:", dateString, e);
+      return "Invalid Date";
+    }
+  };
+
+  // Handle opening client details modal
+  const handleViewClientDetails = (client: Client) => {
+    // Mock data for loans and upcoming payments
+    const mockLoans: ClientLoan[] = [
+      {
+        id: "LN001",
+        type: "Personal Loan",
+        amount: 10000,
+        remainingBalance: 7500,
+        interestRate: 5.5,
+        nextDueDate: "2024-07-15",
+        status: "Active",
+      },
+      {
+        id: "LN002",
+        type: "Mortgage",
+        amount: 250000,
+        remainingBalance: 240000,
+        interestRate: 3.2,
+        nextDueDate: "2024-07-01",
+        status: "Active",
+      },
+      {
+        id: "LN003",
+        type: "Car Loan",
+        amount: 20000,
+        remainingBalance: 5000,
+        interestRate: 7.0,
+        nextDueDate: "2024-06-25",
+        status: "Overdue",
+      },
+    ];
+
+    const mockUpcomingPayments: ClientUpcomingPayment[] = [
+      {
+        loanId: "LN001",
+        loanType: "Personal Loan",
+        amountDue: 500,
+        dueDate: "2024-07-15",
+      },
+      {
+        loanId: "LN002",
+        loanType: "Mortgage",
+        amountDue: 1200,
+        dueDate: "2024-07-01",
+      },
+    ];
+
+    const totalRemainingBalance = mockLoans.reduce(
+      (sum, loan) => sum + loan.remainingBalance,
+      0
+    );
+    const totalUpcomingPaymentsAmount = mockUpcomingPayments.reduce(
+      (sum, payment) => sum + payment.amountDue,
+      0
+    );
+    const activeLoansCount = mockLoans.filter(
+      (loan) => loan.status === "Active" || loan.status === "Overdue"
+    ).length;
+
+    setSelectedClientForDetails({
+      ...client,
+      loans: mockLoans,
+      upcomingPayments: mockUpcomingPayments,
+      totalRemainingBalance,
+      totalUpcomingPaymentsAmount,
+      activeLoansCount,
+    });
+    setIsClientDetailsModalOpen(true);
   };
 
   // Calculate stats
@@ -662,7 +1054,10 @@ const Clients: React.FC = () => {
                         {client.last_name.charAt(0)}
                       </div>
                       <div>
-                        <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                        <div
+                          className="font-semibold text-foreground group-hover:text-primary transition-colors cursor-pointer"
+                          onClick={() => handleViewClientDetails(client)}
+                        >
                           {client.first_name} {client.last_name}
                         </div>
                         {client.id_type && (
@@ -803,6 +1198,15 @@ const Clients: React.FC = () => {
           )}
         </Card>
       )}
+
+      {/* Client Details Modal - Render the new component */}
+      <ClientDetailsModal
+        isOpen={isClientDetailsModalOpen}
+        onClose={() => setIsClientDetailsModalOpen(false)}
+        clientDetails={selectedClientForDetails}
+        formatDate={formatDate} // Pass formatDate function
+        getStatusBadge={getStatusBadge} // Pass getStatusBadge function
+      />
 
       {/* Modals with enhanced animations */}
       <FormModal

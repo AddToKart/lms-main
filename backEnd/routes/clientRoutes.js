@@ -10,6 +10,9 @@ router.use(protect);
 // Statistics route (must come before /:id)
 router.get("/stats", clientController.getClientStats);
 
+// Route to get clients with active loans (must come before /:id)
+router.get("/with-active-loans", clientController.getClientsWithActiveLoans);
+
 // Main CRUD routes
 router
   .route("/")

@@ -41,6 +41,15 @@ export interface LoanFilters {
   sort_order?: "ASC" | "DESC";
 }
 
+// Basic Client interface - adjust fields as per your actual client data structure
+export interface Client {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email?: string; // Optional: if email is also available and needed
+  // Add other client fields if needed for display or logic
+}
+
 export interface LoanFormData {
   client_id: number;
   loan_amount: number;
@@ -109,15 +118,28 @@ export const getActiveLoans = async (): Promise<ApiResponse<Loan[]>> => {
   }
 };
 
-export const getLoanById = async (
-  id: number
-): Promise<ApiResponse<{ loan: Loan; payments: any[] }>> => {
+export const getLoanById = async (loanId: number): Promise<ApiResponse<Loan>> => {
   try {
-    const response = await apiRequest(`/api/loans/${id}`);
-    return response;
-  } catch (error) {
-    console.error("Error fetching loan:", error);
-    throw error;
+    // Assuming your API endpoint for a single loan is /api/loans/:id
+    const response = await fetch(`${API_URL}/api/loans/${loanId}`, { 
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+    });
+    if (!response.ok) {
+      // Attempt to parse error message from backend if available
+      const errorData = await response.json().catch(() => null);
+      throw new Error(errorData?.message || `HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    // The backend might return the loan directly or nested under a 'data' key
+    // Adjust based on your actual API response structure
+    return { success: true, data: data.data || data, message: "Loan fetched successfully" };
+  } catch (error: any) {
+    console.error(`Error fetching loan by ID ${loanId}:`, error);
+    return { success: false, data: null, message: error.message || "Failed to fetch loan." };
   }
 };
 
@@ -181,6 +203,48 @@ export const approveLoan = async (
   } catch (error) {
     console.error("Error approving loan:", error);
     throw error;
+  }
+};
+
+export const getClientsWithLoans = async (): Promise<ApiResponse<Client[]>> => {
+  try {
+    // TODO: Replace with the actual backend endpoint
+    // This assumes your backend will have an endpoint like '/api/clients/with-active-loans'
+    // or similar, which returns an array of Client objects.
+    console.log("Making request to:", `${API_URL}/api/clients/with-active-loans`); // Debug log
+
+    const response = await fetch(`${API_URL}/api/clients/with-active-loans`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+    });
+
+    console.log("Response status (getClientsWithLoans):", response.status); // Debug log
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("API Error (getClientsWithLoans):", errorData); // Debug log
+      throw new Error(
+        errorData.message || `HTTP error! status: ${response.status}`
+      );
+    }
+
+    const data = await response.json();
+    console.log("Clients with active loans response data:", data); // Debug log
+
+    // Assuming the backend returns { success: boolean, data: Client[] }
+    // or just Client[] directly. Adjust based on your actual API response.
+    return data.success ? data : { success: true, data: data, message: "" }; 
+  } catch (error) {
+    console.error("Error fetching clients with active loans:", error);
+    // Return a failed ApiResponse structure
+    return { 
+      success: false, 
+      message: error instanceof Error ? error.message : "Unknown error fetching clients", 
+      data: [] 
+    };
   }
 };
 

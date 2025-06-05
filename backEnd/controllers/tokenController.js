@@ -21,7 +21,7 @@ exports.refreshToken = async (req, res) => {
 
     // Check if user exists and is active
     const [users] = await pool.query(
-      "SELECT id, username, role FROM users WHERE id = ? AND status = 'active'",
+      "SELECT id, username, role FROM users WHERE id = ? AND is_active = true", // Changed status to is_active
       [decoded.id]
     );
 

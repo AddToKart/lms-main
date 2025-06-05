@@ -316,7 +316,22 @@ exports.updateLoan = async (req, res) => {
     // Build dynamic update query
     const fields = Object.keys(updates).filter((key) => key !== "id");
     const setClause = fields.map((field) => `${field} = ?`).join(", ");
-    const values = fields.map((field) => updates[field]);
+    // Prepare values, formatting date if present
+    const values = fields.map((field) => {
+      if (field === 'start_date' && updates[field]) {
+        // Convert ISO string to Date object
+        const date = new Date(updates[field]);
+        // Format to 'YYYY-MM-DD HH:MM:SS'
+        const year = date.getFullYear();
+        const month = ('0' + (date.getMonth() + 1)).slice(-2); // getMonth() is 0-indexed
+        const day = ('0' + date.getDate()).slice(-2);
+        const hours = ('0' + date.getHours()).slice(-2);
+        const minutes = ('0' + date.getMinutes()).slice(-2);
+        const seconds = ('0' + date.getSeconds()).slice(-2);
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      }
+      return updates[field];
+    });
 
     if (fields.length === 0) {
       return res.status(400).json({

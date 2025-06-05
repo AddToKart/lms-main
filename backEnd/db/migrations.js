@@ -18,7 +18,7 @@ const tables = [
   `CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL, // Changed from 'password' to 'password_hash'
     email VARCHAR(100) UNIQUE,
     role ENUM('admin', 'staff') NOT NULL DEFAULT 'staff',
     full_name VARCHAR(100),
@@ -148,7 +148,7 @@ async function runMigrations() {
       // Create default admin user if it doesn't exist
       const hashedPassword = await bcrypt.hash(defaultAdmin.password, 10);
       await connection.query(
-        "INSERT INTO users (username, password, email, role, full_name) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO users (username, password_hash, email, role, full_name) VALUES (?, ?, ?, ?, ?)", // Changed 'password' to 'password_hash'
         [
           defaultAdmin.username,
           hashedPassword,

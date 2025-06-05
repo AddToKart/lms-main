@@ -18,7 +18,7 @@ exports.login = async (req, res) => {
   try {
     // Check if user exists
     const [users] = await pool.query(
-      "SELECT * FROM users WHERE username = ? AND status = 'active'",
+      "SELECT * FROM users WHERE username = ? AND is_active = true", // Changed status to is_active
       [username]
     );
 
@@ -31,8 +31,12 @@ exports.login = async (req, res) => {
 
     const user = users[0];
 
+    // Add this console.log for debugging:
+    console.log("User object fetched from DB:", JSON.stringify(user, null, 2));
+    console.log("Value of user.password:", user.password);
+
     // Check password
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       return res.status(401).json({
         success: false,
@@ -243,7 +247,7 @@ exports.register = async (req, res) => {
 
     // Create user
     const [result] = await pool.query(
-      "INSERT INTO users (username, email, password_hash, role, first_name, last_name, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'active', NOW())",
+      "INSERT INTO users (username, email, password_hash, role, first_name, last_name, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, true, NOW())", // Changed status to is_active and value to true
       [username, email, hashedPassword, role, first_name, last_name]
     );
 
