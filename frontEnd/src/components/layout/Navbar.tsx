@@ -1,5 +1,6 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React from "react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 interface NavbarProps {
   toggleSidebar: () => void;
@@ -8,58 +9,90 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ toggleSidebar, isDarkMode }) => {
   return (
-    <nav className={`fixed top-0 left-0 right-0 z-40 h-16 ${
-      isDarkMode 
-        ? 'bg-secondary-900 text-white border-b border-secondary-800' 
-        : 'bg-white text-secondary-900 shadow-md'
-    } transition-all duration-200`}>
+    <nav
+      className={`fixed top-0 left-0 right-0 z-40 h-16 transition-all duration-300 ${
+        isDarkMode
+          ? "bg-card border-b border-border shadow-xl backdrop-blur-xl"
+          : "bg-white border-b border-gray-200 shadow-md"
+      }`}
+    >
       <div className="flex justify-between h-full px-4">
         <div className="flex items-center">
-          <button 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={toggleSidebar}
-            className={`lg:hidden p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500/50 ${
-              isDarkMode ? 'text-secondary-300 hover:bg-secondary-800' : 'text-secondary-500 hover:bg-secondary-100'
-            } transition-colors duration-150`}
+            className={`lg:hidden ${
+              isDarkMode
+                ? "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                : "text-gray-500 hover:bg-gray-100"
+            }`}
             aria-label="Toggle Sidebar"
           >
             <span className="material-icons">menu</span>
-          </button>
-          
+          </Button>
+
           <Link to="/" className="flex items-center ml-2 lg:ml-0">
-            <div className={`flex items-center justify-center h-9 w-9 rounded-lg ${
-              isDarkMode ? 'bg-primary-700' : 'bg-primary-600'
-            } text-white mr-3 transition-colors duration-200`}>
+            <div
+              className={`flex items-center justify-center h-10 w-10 rounded-xl mr-3 transition-all duration-300 ${
+                isDarkMode
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                  : "bg-primary-600 text-white shadow-md"
+              }`}
+            >
               <span className="material-icons text-xl">account_balance</span>
             </div>
-            <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-secondary-900'}`}>
+            <h1
+              className={`text-xl font-semibold transition-colors duration-300 ${
+                isDarkMode ? "text-foreground" : "text-gray-900"
+              }`}
+            >
               Loan Management
             </h1>
           </Link>
         </div>
-        
-        <div className="flex items-center">
-          <div className={`hidden md:flex items-center rounded-full px-3 py-1.5 mr-4 ${
-            isDarkMode ? 'bg-secondary-800' : 'bg-secondary-100'
-          }`}>
-            <span className="material-icons text-primary-500 mr-2 text-sm">schedule</span>
-            <span className={`text-xs font-medium ${
-              isDarkMode ? 'text-secondary-300' : 'text-secondary-600'
-            }`}>{new Date().toLocaleDateString()}</span>
+
+        <div className="flex items-center space-x-4">
+          {/* Date Display */}
+          <div
+            className={`hidden md:flex items-center rounded-lg px-3 py-2 transition-colors duration-300 ${
+              isDarkMode
+                ? "bg-muted/50 text-muted-foreground"
+                : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            <span className="material-icons text-primary mr-2 text-sm">
+              schedule
+            </span>
+            <span className="text-xs font-medium">
+              {new Date().toLocaleDateString()}
+            </span>
           </div>
-          
-          <div className={`flex items-center px-2 py-1 rounded-lg transition-colors duration-150 ${
-            isDarkMode ? 'hover:bg-secondary-800' : 'hover:bg-secondary-100'
-          }`}>
-            <div className="text-right mr-3">
-              <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-secondary-900'}`}>
+
+          {/* User Profile */}
+          <div
+            className={`flex items-center px-3 py-2 rounded-lg transition-colors duration-300 ${
+              isDarkMode ? "hover:bg-muted/50" : "hover:bg-gray-100"
+            }`}
+          >
+            <div className="text-right mr-3 hidden sm:block">
+              <div
+                className={`text-sm font-medium transition-colors duration-300 ${
+                  isDarkMode ? "text-foreground" : "text-gray-900"
+                }`}
+              >
                 Admin User
               </div>
-              <div className={`text-xs ${isDarkMode ? 'text-secondary-400' : 'text-secondary-500'}`}>
-                Administrator
-              </div>
+              <div className="text-xs text-muted-foreground">Administrator</div>
             </div>
-            <div className={`h-10 w-10 rounded-full ${isDarkMode ? 'bg-primary-700' : 'bg-primary-500'} flex items-center justify-center text-white shadow-sm`}>
-              <span className="material-icons">person</span>
+            <div
+              className={`h-10 w-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+                isDarkMode
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                  : "bg-primary-500 text-white shadow-md"
+              }`}
+            >
+              <span className="material-icons text-lg">person</span>
             </div>
           </div>
         </div>
@@ -68,4 +101,4 @@ const Navbar: React.FC<NavbarProps> = ({ toggleSidebar, isDarkMode }) => {
   );
 };
 
-export default Navbar; 
+export default Navbar;

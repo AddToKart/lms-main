@@ -1,7 +1,7 @@
-require('dotenv').config();
-const mysql = require('mysql2/promise');
-const bcrypt = require('bcrypt');
-const colors = require('colors');
+require("dotenv").config();
+const mysql = require("mysql2/promise");
+const bcrypt = require("bcrypt");
+const colors = require("colors");
 
 // Database configuration
 const dbConfig = {
@@ -9,7 +9,7 @@ const dbConfig = {
   port: process.env.DB_PORT,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  multipleStatements: true // Enable multiple statements for migrations
+  multipleStatements: true, // Enable multiple statements for migrations
 };
 
 // Tables to be created
@@ -27,7 +27,7 @@ const tables = [
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`,
-  
+
   // Clients table
   `CREATE TABLE IF NOT EXISTS clients (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -48,7 +48,7 @@ const tables = [
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id)
   )`,
-  
+
   // Loans table
   `CREATE TABLE IF NOT EXISTS loans (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -67,94 +67,117 @@ const tables = [
     FOREIGN KEY (client_id) REFERENCES clients(id),
     FOREIGN KEY (approved_by) REFERENCES users(id)
   )`,
-  
-  // Payments table
+
+  // Payments table - Updated for MySQL
   `CREATE TABLE IF NOT EXISTS payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     loan_id INT NOT NULL,
-    amount DECIMAL(15, 2) NOT NULL,
-    payment_date DATETIME NOT NULL,
-    payment_method ENUM('cash', 'bank_transfer', 'check', 'online') NOT NULL,
+    client_id INT NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL CHECK (amount > 0),
+    payment_date DATE NOT NULL,
+    payment_method ENUM('cash', 'bank_transfer', 'check', 'online', 'credit_card') NOT NULL,
     reference_number VARCHAR(100),
-    received_by INT,
+    status ENUM('pending', 'completed', 'failed') NOT NULL DEFAULT 'completed',
+    processed_by INT NOT NULL, // Changed from received_by
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (loan_id) REFERENCES loans(id),
-    FOREIGN KEY (received_by) REFERENCES users(id)
-  )`
+    FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (processed_by) REFERENCES users(id), // Changed from received_by
+    INDEX idx_payments_loan_id (loan_id),
+    INDEX idx_payments_client_id (client_id),
+    INDEX idx_payments_payment_date (payment_date),
+    INDEX idx_payments_status (status),
+    INDEX idx_payments_payment_method (payment_method)
+  )`,
 ];
 
 // Default admin user
 const defaultAdmin = {
-  username: 'admin',
-  password: 'admin123', // Will be hashed before insertion
-  email: 'admin@example.com',
-  role: 'admin',
-  full_name: 'System Administrator'
+  username: "admin",
+  password: "admin123", // Will be hashed before insertion
+  email: "admin@example.com",
+  role: "admin",
+  full_name: "System Administrator",
 };
 
 // Function to run migrations
 async function runMigrations() {
-  console.log('\n🔄 Starting database migrations...'.yellow);
-  
+  console.log("\n🔄 Starting database migrations...".yellow);
+
   let connection;
-  
+
   try {
     // Connect to MySQL server (without database)
     connection = await mysql.createConnection(dbConfig);
-    console.log('✅ Connected to MySQL server'.green);
-    
+    console.log("✅ Connected to MySQL server".green);
+
     // Create database if it doesn't exist
-    await connection.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME}`);
+    await connection.query(
+      `CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME}`
+    );
     console.log(`✅ Ensured database exists: ${process.env.DB_NAME}`.green);
-    
+
     // Use the database
     await connection.query(`USE ${process.env.DB_NAME}`);
     console.log(`✅ Using database: ${process.env.DB_NAME}`.green);
-    
+
     // Create tables
-    console.log('\n📊 Creating tables:'.yellow);
+    console.log("\n📊 Creating tables:".yellow);
     for (const [index, tableQuery] of tables.entries()) {
       const tableName = tableQuery.match(/CREATE TABLE IF NOT EXISTS (\w+)/)[1];
       try {
         await connection.query(tableQuery);
         console.log(`   ${index + 1}. ${tableName.padEnd(15)} ✅`.green);
       } catch (error) {
-        console.error(`   ${index + 1}. ${tableName.padEnd(15)} ❌ Error: ${error.message}`.red);
+        console.error(
+          `   ${index + 1}. ${tableName.padEnd(15)} ❌ Error: ${error.message}`
+            .red
+        );
       }
     }
-    
+
     // Check if admin user exists
-    const [adminCheck] = await connection.query('SELECT * FROM users WHERE username = ?', [defaultAdmin.username]);
-    
+    const [adminCheck] = await connection.query(
+      "SELECT * FROM users WHERE username = ?",
+      [defaultAdmin.username]
+    );
+
     if (adminCheck.length === 0) {
       // Create default admin user if it doesn't exist
       const hashedPassword = await bcrypt.hash(defaultAdmin.password, 10);
       await connection.query(
-        'INSERT INTO users (username, password, email, role, full_name) VALUES (?, ?, ?, ?, ?)',
-        [defaultAdmin.username, hashedPassword, defaultAdmin.email, defaultAdmin.role, defaultAdmin.full_name]
+        "INSERT INTO users (username, password, email, role, full_name) VALUES (?, ?, ?, ?, ?)",
+        [
+          defaultAdmin.username,
+          hashedPassword,
+          defaultAdmin.email,
+          defaultAdmin.role,
+          defaultAdmin.full_name,
+        ]
       );
-      console.log('\n👤 Default admin user created:'.green);
+      console.log("\n👤 Default admin user created:".green);
       console.log(`   Username: ${defaultAdmin.username}`.cyan);
       console.log(`   Password: ${defaultAdmin.password}`.cyan);
-      console.log('   (Please change this password after first login)'.yellow);
+      console.log("   (Please change this password after first login)".yellow);
     } else {
-      console.log('\n👤 Default admin user already exists'.yellow);
+      console.log("\n👤 Default admin user already exists".yellow);
     }
-    
-    console.log('\n✅ Database migrations completed successfully'.green.bold);
-    
+
+    console.log("\n✅ Database migrations completed successfully".green.bold);
   } catch (error) {
-    console.error('\n❌ Migration error:'.red.bold, error.message);
-    console.log('\n🔍 Troubleshooting tips:'.yellow);
-    console.log('   - Check if MySQL server is running'.gray);
+    console.error("\n❌ Migration error:".red.bold, error.message);
+    console.log("\n🔍 Troubleshooting tips:".yellow);
+    console.log("   - Check if MySQL server is running".gray);
     console.log(`   - Verify DB_USER and DB_PASSWORD in .env file`.gray);
-    console.log(`   - Make sure user '${process.env.DB_USER}' has CREATE privileges`.gray);
+    console.log(
+      `   - Make sure user '${process.env.DB_USER}' has CREATE privileges`.gray
+    );
   } finally {
     if (connection) {
       await connection.end();
-      console.log('\n🔌 Database connection closed'.gray);
+      console.log("\n🔌 Database connection closed".gray);
     }
   }
 }

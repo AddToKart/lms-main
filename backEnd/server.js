@@ -1,34 +1,46 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-require('colors');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+require("colors");
 
-// Import database and migrations
-const pool = require('./db/database');
-const { runMigrations } = require('./db/migrations');
+// Import database and schema
+const pool = require("./db/database");
+const { initializeDatabase } = require("./db/schema");
 
 // Import routes
-const authRoutes = require('./routes/authRoutes');
-const tokenRoutes = require('./routes/tokenRoutes');
+const authRoutes = require("./routes/authRoutes");
+const tokenRoutes = require("./routes/tokenRoutes");
+const clientRoutes = require("./routes/clientRoutes");
+const loanRoutes = require("./routes/loanRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 // Import security packages
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 // Text formatting helpers
-const divider = '='.repeat(60).cyan;
-const subDivider = '─'.repeat(60).gray;
+const divider = "=".repeat(60).cyan;
+const subDivider = "─".repeat(60).gray;
 
 const app = express();
 
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // Security middleware
 app.use(helmet()); // Set security HTTP headers
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'http://localhost:3000' 
-    : '*',
-  credentials: true
-}));
+
+// CORS configuration (remove duplicate)
+app.use(
+  cors({
+    origin:
+      process.env.NODE_ENV === "production"
+        ? process.env.FRONTEND_URL || "http://localhost:3000"
+        : ["http://localhost:3000", "http://localhost:5173"],
+    credentials: true,
+  })
+);
 
 // Rate limiting
 const apiLimiter = rateLimit({
@@ -39,135 +51,133 @@ const apiLimiter = rateLimit({
   message: {
     status: 429,
     success: false,
-    message: 'Too many requests, please try again later.'
-  }
+    message: "Too many requests, please try again later.",
+  },
 });
 
-// Apply rate limiting to auth routes
-app.use('/api/auth', apiLimiter);
-
-// Body parsing middleware
-app.use(express.json({ limit: '10kb' })); // Body limit is 10kb
-app.use(express.urlencoded({ extended: true }));
+app.use("/api", apiLimiter);
 
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/token', tokenRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/tokens", tokenRoutes);
+app.use("/api/clients", clientRoutes);
+app.use("/api/loans", loanRoutes);
+app.use("/api/payments", paymentRoutes);
 
-// Basic route
-app.get('/', (req, res) => {
-  res.json({ message: '🚀 Welcome to the LMS API' });
-});
-
-// API documentation route
-app.get('/api', (req, res) => {
+// Health check endpoint
+app.get("/api/health", (req, res) => {
   res.json({
-    message: 'LMS API Documentation',
-    version: '1.0.0',
-    endpoints: {
-      auth: {
-        login: { method: 'POST', url: '/api/auth/login', description: 'Login with username and password' },
-        profile: { method: 'GET', url: '/api/auth/profile', description: 'Get current user profile (requires auth)' },
-        changePassword: { method: 'POST', url: '/api/auth/change-password', description: 'Change password (requires auth)' }
-      },
-      token: {
-        refresh: { method: 'POST', url: '/api/token/refresh', description: 'Refresh an expired JWT token' }
-      }
-    }
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  const healthcheck = {
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    database: {
-      status: 'checking',
-      timestamp: null,
-      error: null
-    },
-    system: {
-      memory: process.memoryUsage(),
-      nodeVersion: process.version,
-      platform: process.platform,
-      cpuUsage: process.cpuUsage()
-    }
-  };
-
-  try {
-    // Test database connection
-    const startTime = process.hrtime();
-    const [rows] = await pool.query('SELECT 1 as test');
-    const [seconds, nanoseconds] = process.hrtime(startTime);
-    const responseTime = (seconds * 1000 + nanoseconds / 1e6).toFixed(2);
-    
-    healthcheck.database = {
-      status: 'connected',
-      responseTime: `${responseTime}ms`,
-      timestamp: new Date().toISOString()
-    };
-    
-    res.json(healthcheck);
-  } catch (error) {
-    healthcheck.status = 'ERROR';
-    healthcheck.database = {
-      status: 'disconnected',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    };
-    res.status(503).json(healthcheck);
-  }
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    message: "Something went wrong!",
+    error:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : "Internal server error",
+  });
 });
 
-// Test database route (kept for backward compatibility)
-app.get('/test-db', async (req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT 1 as test');
-    res.json({ success: true, message: 'Database connection successful!', data: rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Database connection failed', error: error.message });
-  }
+// 404 handler
+app.use("*", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
 });
 
-// Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
-  console.clear();
-  
-  // Server header
-  console.log(divider);
-  console.log(`🚀 ${'Server is running on'.gray} ${`http://localhost:${PORT}`.cyan.bold} 🚀`.padEnd(58));
-  console.log(divider);
-  
-  // Run database migrations
-  console.log('\n📝 Running database migrations...'.yellow);
-  await runMigrations();
-  
-  // Available endpoints
-  console.log('\n📡 Available Endpoints:'.yellow);
-  console.log(subDivider);
-  console.log(`🌐 ${'GET'.green.bold.padEnd(10)} ${`http://localhost:${PORT}/`.cyan}`.padEnd(50) + ' API Welcome Message');
-  console.log(`📝 ${'GET'.green.bold.padEnd(10)} ${`http://localhost:${PORT}/api`.cyan}`.padEnd(50) + ' API Documentation');
-  console.log(`💓 ${'GET'.green.bold.padEnd(10)} ${`http://localhost:${PORT}/health`.cyan}`.padEnd(50) + ' Health Check & System Status');
-  console.log(`🔑 ${'POST'.green.bold.padEnd(10)} ${`http://localhost:${PORT}/api/auth/login`.cyan}`.padEnd(50) + ' Login');
-  
-  // Authentication instructions
-  console.log('\n🔐 Authentication:'.yellow);
-  console.log(subDivider);
-  console.log(`👉 Default Admin Credentials:`.cyan);
-  console.log(`   Username: ${'admin'.white}`);
-  console.log(`   Password: ${'admin123'.white}`);
-  console.log(`   (Please change this password after first login)`.gray);
-  
-  // Quick test instructions
-  console.log('\n🔧 Quick API Test:'.yellow);
-  console.log(subDivider);
-  console.log(`👉 Login: ${'curl -X POST http://localhost:5000/api/auth/login -H "Content-Type: application/json" -d "{\"username\":\"admin\",\"password\":\"admin123\"}"'.gray}`);
-  
-  // Footer
-  console.log('\n' + divider);
-  console.log('💡 Tip: The server will automatically restart when you make changes'.gray);
-  console.log(divider + '\n');
-});
+
+// Database initialization and server startup
+const startServer = async () => {
+  try {
+    console.log(divider);
+    console.log("🚀 Starting Loan Management System Server...".cyan.bold);
+    console.log(divider);
+
+    // Test database connection
+    console.log("📊 Testing database connection...".yellow);
+    await pool.execute("SELECT 1");
+    console.log("   ✅ Database connection successful".green);
+
+    // Initialize database
+    console.log("🔧 Initializing database...".yellow);
+    await initializeDatabase();
+    console.log("   ✅ Database initialized successfully".green);
+
+    // Start server
+    const server = app.listen(PORT, () => {
+      console.log(subDivider);
+      console.log(`🌟 Server Status: ${"RUNNING".green.bold}`);
+      console.log(
+        `🌐 Environment: ${(process.env.NODE_ENV || "development").blue.bold}`
+      );
+      console.log(`📡 Port: ${PORT.toString().cyan.bold}`);
+      console.log(
+        `🔗 URL: ${"http://localhost:".white}${PORT.toString().cyan.bold}`
+      );
+      console.log(
+        `📚 API Docs: ${"http://localhost:".white}${PORT.toString().cyan.bold}${
+          "/api/health".gray
+        }`
+      );
+      console.log(subDivider);
+      console.log("🎯 API Endpoints:".yellow.bold);
+      console.log(`   • Authentication: ${"/api/auth".gray}`);
+      console.log(`   • Clients: ${"/api/clients".gray}`);
+      console.log(`   • Loans: ${"/api/loans".gray}`);
+      console.log(`   • Payments: ${"/api/payments".gray}`);
+      console.log(`   • Tokens: ${"/api/tokens".gray}`);
+      console.log(divider);
+      console.log("✨ Server ready to accept connections!".green.bold);
+      console.log(divider);
+    });
+
+    // Graceful shutdown handling
+    const gracefulShutdown = (signal) => {
+      console.log(
+        `\n🛑 Received ${signal}. Starting graceful shutdown...`.yellow
+      );
+
+      server.close(async () => {
+        console.log("📡 HTTP server closed".gray);
+
+        try {
+          await pool.end();
+          console.log("📊 Database connection closed".gray);
+        } catch (error) {
+          console.error("❌ Error closing database:", error.message);
+        }
+
+        console.log("✅ Graceful shutdown completed".green);
+        process.exit(0);
+      });
+
+      // Force close after 10 seconds
+      setTimeout(() => {
+        console.error("⚠️  Force closing server after timeout".red);
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  } catch (error) {
+    console.error("❌ Failed to start server:".red.bold, error.message);
+    process.exit(1);
+  }
+};
+
+// Start the server
+startServer();
+
+module.exports = app;
