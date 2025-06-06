@@ -138,49 +138,29 @@ const startServer = async () => {
       console.log(`   • Clients: ${"/api/clients".gray}`);
       console.log(`   • Loans: ${"/api/loans".gray}`);
       console.log(`   • Payments: ${"/api/payments".gray}`);
-      console.log(`   • Tokens: ${"/api/tokens".gray}`);
       console.log(`   • Reports: ${"/api/reports".gray}`);
-      console.log(divider);
-      console.log("✨ Server ready to accept connections!".green.bold);
-      console.log(divider);
+      console.log(subDivider);
+      console.log("✅ Server ready to serve your actual data!".green.bold);
     });
 
-    // Graceful shutdown handling
-    const gracefulShutdown = (signal) => {
-      console.log(
-        `\n🛑 Received ${signal}. Starting graceful shutdown...`.yellow
-      );
-
-      server.close(async () => {
-        console.log("📡 HTTP server closed".gray);
-
-        try {
-          await pool.end();
-          console.log("📊 Database connection closed".gray);
-        } catch (error) {
-          console.error("❌ Error closing database:", error.message);
-        }
-
-        console.log("✅ Graceful shutdown completed".green);
-        process.exit(0);
+    // Graceful shutdown
+    process.on("SIGTERM", () => {
+      console.log("SIGTERM signal received: closing HTTP server");
+      server.close(() => {
+        console.log("HTTP server closed");
       });
-
-      // Force close after 10 seconds
-      setTimeout(() => {
-        console.error("⚠️  Force closing server after timeout".red);
-        process.exit(1);
-      }, 10000);
-    };
-
-    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+    });
   } catch (error) {
-    console.error("❌ Failed to start server:".red.bold, error.message);
+    console.error("❌ Failed to start server:".red.bold);
+    console.error(`   Error: ${error.message}`.red);
+    console.log("\n🔍 Troubleshooting:".yellow);
+    console.log("   • Check database connection".gray);
+    console.log("   • Verify .env configuration".gray);
+    console.log("   • Ensure MySQL is running".gray);
     process.exit(1);
   }
 };
 
-// Start the server
 startServer();
 
 module.exports = app;

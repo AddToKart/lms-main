@@ -1,24 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   FiBarChart,
-  FiUsers,
   FiDollarSign,
   FiAlertTriangle,
   FiDownload,
   FiCalendar,
   FiTrendingUp,
   FiFilter,
-  FiMoreVertical,
-  FiEye,
-  FiPhone,
-  FiMail,
   FiRefreshCw,
-  FiCreditCard, // Add this import
+  FiCreditCard, // Added for consistency if used in analytics
 } from "react-icons/fi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ApiResponse } from "../../services/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -37,112 +30,45 @@ import {
 } from "@/components/ui/select";
 import {
   getLoanSummaryReport,
-  getClientSummaryReport,
   getPaymentHistoryReport,
   getOverdueLoansReport,
-  getDashboardAnalytics,
-  exportReport,
+  getLoanAnalytics,
+  exportReport, // Ensure this service function is correctly implemented for blob handling
   LoanSummaryData,
-  ClientSummaryData,
   PaymentHistoryData,
   OverdueLoanData,
-  DashboardAnalytics,
+  LoanAnalytics,
 } from "../../services/reportService";
+import { ApiResponse } from "../../services/api"; // Assuming ApiResponse is exported from api.ts
 
-interface JsonExportApiResponse extends ApiResponse<any> {
-  meta?: {
-    filename?: string;
-  };
-}
+// API URL from environment variable or default to localhost
+// const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000"; // Not directly used if all API calls go through services
 
-type ReportType =
-  | "loanSummary"
-  | "clientSummary"
-  | "paymentHistory"
-  | "overdueLoans";
+type ReportType = "loanSummary" | "paymentHistory" | "overdueLoans";
 
-// Enhanced Stats Card with gradients and animations
-interface StatsCardProps {
-  title: string;
-  value: number | string;
-  icon: React.ReactNode;
-  variant: "default" | "success" | "warning" | "danger";
-  subtitle?: string;
-}
+// Helper functions
+const formatCurrency = (amount: number | string | null | undefined) => {
+  if (amount === null || amount === undefined || String(amount).trim() === "")
+    return "$0.00";
+  const num = parseFloat(String(amount));
+  if (isNaN(num)) return "$0.00";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(num);
+};
 
-const StatsCard: React.FC<StatsCardProps> = ({
-  title,
-  value,
-  icon,
-  variant,
-  subtitle,
-}) => {
-  const getVariantStyles = () => {
-    switch (variant) {
-      case "success":
-        return {
-          iconBg: "bg-gradient-to-br from-green-500 to-emerald-600",
-          cardBg:
-            "bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20",
-          text: "text-green-700 dark:text-green-300",
-          border: "border-green-200/50 dark:border-green-800/50",
-        };
-      case "warning":
-        return {
-          iconBg: "bg-gradient-to-br from-yellow-500 to-orange-600",
-          cardBg:
-            "bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20",
-          text: "text-yellow-700 dark:text-yellow-300",
-          border: "border-yellow-200/50 dark:border-yellow-800/50",
-        };
-      case "danger":
-        return {
-          iconBg: "bg-gradient-to-br from-red-500 to-rose-600",
-          cardBg:
-            "bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-900/20 dark:to-rose-900/20",
-          text: "text-red-700 dark:text-red-300",
-          border: "border-red-200/50 dark:border-red-800/50",
-        };
-      default:
-        return {
-          iconBg: "bg-gradient-to-br from-blue-500 to-indigo-600",
-          cardBg:
-            "bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20",
-          text: "text-blue-700 dark:text-blue-300",
-          border: "border-blue-200/50 dark:border-blue-800/50",
-        };
-    }
-  };
-
-  const styles = getVariantStyles();
-
-  return (
-    <Card
-      className={`transition-all duration-300 hover:shadow-xl hover:scale-105 hover:-translate-y-1 border-2 ${styles.border} ${styles.cardBg} hover-lift group`}
-    >
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-          {title}
-        </CardTitle>
-        <div
-          className={`p-3 rounded-xl ${styles.iconBg} shadow-lg group-hover:scale-110 transition-transform duration-300`}
-        >
-          <div className="text-white">{icon}</div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className={`text-3xl font-bold ${styles.text} transition-colors`}>
-          {value}
-        </div>
-        {subtitle && (
-          <div className="flex items-center gap-1 mt-2">
-            <FiTrendingUp className="w-3 h-3 text-green-500" />
-            <span className="text-xs text-muted-foreground">{subtitle}</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+const formatDate = (dateString: string | Date | undefined) => {
+  if (!dateString) return "N/A";
+  try {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch (e) {
+    return "Invalid Date";
+  }
 };
 
 const Reports: React.FC = () => {
@@ -154,212 +80,151 @@ const Reports: React.FC = () => {
       .split("T")[0],
     to: new Date().toISOString().split("T")[0],
   });
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Data states
   const [loanSummaryData, setLoanSummaryData] = useState<LoanSummaryData[]>([]);
-  const [clientSummaryData, setClientSummaryData] = useState<
-    ClientSummaryData[]
-  >([]);
   const [paymentHistoryData, setPaymentHistoryData] = useState<
     PaymentHistoryData[]
   >([]);
   const [overdueLoansData, setOverdueLoansData] = useState<OverdueLoanData[]>(
     []
   );
-  const [dashboardAnalytics, setDashboardAnalytics] =
-    useState<DashboardAnalytics | null>(null);
+  const [loanAnalytics, setLoanAnalytics] = useState<LoanAnalytics | null>(
+    null
+  );
 
-  // Load data on component mount
-  useEffect(() => {
-    loadAllData();
-  }, []);
+  // Simple toast function
+  const showToast = (
+    message: string,
+    type: "success" | "error" = "success"
+  ) => {
+    const toast = document.createElement("div");
+    toast.className = `fixed top-4 right-4 z-[1000] px-4 py-2 rounded-md shadow-lg text-white font-medium ${
+      type === "success" ? "bg-green-500" : "bg-red-500"
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      if (document.body.contains(toast)) {
+        document.body.removeChild(toast);
+      }
+    }, 3000);
+  };
 
-  // Reload data when date range changes
-  useEffect(() => {
-    if (
-      selectedReport === "loanSummary" ||
-      selectedReport === "paymentHistory"
-    ) {
-      loadReportData();
-    }
-  }, [dateRange, selectedReport]);
-
-  const loadAllData = async () => {
+  const loadReportData = useCallback(async () => {
     setIsLoading(true);
     try {
-      await Promise.all([loadDashboardAnalytics(), loadReportData()]);
-    } catch (error) {
-      console.error("Error loading reports data:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadDashboardAnalytics = async () => {
-    try {
-      const response = await getDashboardAnalytics();
-      if (response.success) {
-        setDashboardAnalytics(response.data);
-      }
-    } catch (error) {
-      console.error("Error loading dashboard analytics:", error);
-    }
-  };
-
-  const loadReportData = async () => {
-    try {
+      let response: ApiResponse<any> | Response; // Adjusted for exportReport potential raw Response
       switch (selectedReport) {
         case "loanSummary":
-          const loanResponse = await getLoanSummaryReport(
-            dateRange.from,
-            dateRange.to
-          );
-          if (loanResponse.success) {
-            setLoanSummaryData(loanResponse.data);
-          }
-          break;
-        case "clientSummary":
-          const clientResponse = await getClientSummaryReport();
-          if (clientResponse.success) {
-            setClientSummaryData(clientResponse.data);
+          response = await getLoanSummaryReport(dateRange.from, dateRange.to);
+          if (!(response instanceof Response) && response.success) {
+            setLoanSummaryData(response.data);
+          } else if (response instanceof Response) {
+            console.error(
+              "Expected ApiResponse for loan summary, got raw Response"
+            );
+            showToast(
+              "Error: Unexpected response format for loan summary.",
+              "error"
+            );
+          } else if (!(response instanceof Response) && !response.success) {
+            showToast(
+              response.message || "Failed to load loan summary.",
+              "error"
+            );
           }
           break;
         case "paymentHistory":
-          const paymentResponse = await getPaymentHistoryReport(
+          response = await getPaymentHistoryReport(
             dateRange.from,
             dateRange.to
           );
-          if (paymentResponse.success) {
-            setPaymentHistoryData(paymentResponse.data);
+          if (!(response instanceof Response) && response.success) {
+            setPaymentHistoryData(response.data);
+          } else if (response instanceof Response) {
+            console.error(
+              "Expected ApiResponse for payment history, got raw Response"
+            );
+            showToast(
+              "Error: Unexpected response format for payment history.",
+              "error"
+            );
+          } else if (!(response instanceof Response) && !response.success) {
+            showToast(
+              response.message || "Failed to load payment history.",
+              "error"
+            );
           }
           break;
         case "overdueLoans":
-          const overdueResponse = await getOverdueLoansReport();
-          if (overdueResponse.success) {
-            setOverdueLoansData(overdueResponse.data);
+          response = await getOverdueLoansReport();
+          if (!(response instanceof Response) && response.success) {
+            setOverdueLoansData(response.data);
+          } else if (response instanceof Response) {
+            console.error(
+              "Expected ApiResponse for overdue loans, got raw Response"
+            );
+            showToast(
+              "Error: Unexpected response format for overdue loans.",
+              "error"
+            );
+          } else if (!(response instanceof Response) && !response.success) {
+            showToast(
+              response.message || "Failed to load overdue loans.",
+              "error"
+            );
           }
           break;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading report data:", error);
-    }
-  };
-
-  const handleReportChange = (value: ReportType) => {
-    setSelectedReport(value);
-  };
-
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setDateRange({
-      ...dateRange,
-      [name]: value,
-    });
-  };
-
-  const handleExport = async (exportFormat: "json" | "excel" = "excel") => {
-    setIsGenerating(true);
-    try {
-      const reportTypeMap = {
-        loanSummary: "loan_summary" as const,
-        clientSummary: "client_summary" as const,
-        paymentHistory: "payment_history" as const,
-        overdueLoans: "overdue_loans" as const,
-      };
-
-      const response = await exportReport(reportTypeMap[selectedReport], exportFormat);
-
-      if (response instanceof Response) {
-        // Handle raw Response (expected for Excel)
-        if (response.ok) {
-          console.log('Excel export initiated, browser should handle download.');
-          // The browser will handle the download based on Content-Disposition
-        } else {
-          const errorText = await response.text();
-          console.error("Error exporting report (Excel file response):", response.status, errorText);
-          // TODO: Show error to user via toast or alert
-        }
-      } else {
-        // Handle ApiResponse (expected for JSON or errors)
-        const jsonResponse = response as JsonExportApiResponse;
-        if (jsonResponse.success) {
-          // Create and download JSON file
-          const dataStr = JSON.stringify(jsonResponse.data, null, 2);
-          const dataBlob = new Blob([dataStr], { type: "application/json" });
-          const url = URL.createObjectURL(dataBlob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `${jsonResponse.meta?.filename || reportTypeMap[selectedReport] + "_report"}.json`;
-          link.click();
-          URL.revokeObjectURL(url);
-        } else {
-          console.error(
-            "Error exporting report (JSON response):",
-            jsonResponse.message
-          );
-          // TODO: Show error to user via toast or alert
-        }
-      }
-    } catch (error) {
-      console.error("Error in handleExport function:", error);
-      // TODO: Show error to user via toast or alert
+      showToast(error.message || "Failed to load report data.", "error");
     } finally {
-      setIsGenerating(false);
+      setIsLoading(false);
     }
-  };
+  }, [selectedReport, dateRange.from, dateRange.to]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "Good":
-        return (
-          <Badge
-            variant="default"
-            className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-          >
-            Good
-          </Badge>
+  const loadLoanAnalytics = useCallback(async () => {
+    // Separate loading for analytics as it's not date-range dependent
+    setIsLoading(true); // Can use a separate loading state if preferred
+    try {
+      const response = await getLoanAnalytics();
+      if (response.success) {
+        setLoanAnalytics(response.data);
+      } else {
+        showToast(
+          response.message || "Failed to load loan analytics.",
+          "error"
         );
-      case "Warning":
-      case "Overdue":
-        return (
-          <Badge
-            variant="danger"
-            className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-          >
-            {status}
-          </Badge>
-        );
-      case "Completed":
-        return (
-          <Badge
-            variant="secondary"
-            className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-          >
-            Completed
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+      }
+    } catch (error: any) {
+      console.error("Error loading loan analytics:", error);
+      showToast(error.message || "Failed to load loan analytics.", "error");
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  useEffect(() => {
+    loadLoanAnalytics();
+    loadReportData();
+  }, [loadReportData, loadLoanAnalytics]);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+  const handleExport = async (format: "excel" | "json" | "csv") => {
+    if (!selectedReport) return;
+    setIsExporting(true);
+    try {
+      await exportReport(selectedReport, format, dateRange.from, dateRange.to);
+      showToast("Report exported successfully!", "success");
+    } catch (error: any) {
+      console.error("Export error:", error);
+      showToast(error.message || "An error occurred during export.", "error");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const renderReportContent = () => {
@@ -376,402 +241,403 @@ const Reports: React.FC = () => {
 
     switch (selectedReport) {
       case "loanSummary":
-        return (
-          <div className="space-y-6">
-            <div className="overflow-hidden rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Month</TableHead>
-                    <TableHead className="text-right">New Loans</TableHead>
-                    <TableHead className="text-right">Total Amount</TableHead>
-                    <TableHead className="text-right">Avg Interest</TableHead>
-                    <TableHead className="text-right">Approved</TableHead>
-                    <TableHead className="text-right">Rejected</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loanSummaryData.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">
-                        {new Date(item.month + "-01").toLocaleDateString(
-                          "en-US",
-                          {
-                            year: "numeric",
-                            month: "long",
-                          }
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {item.new_loans}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(item.total_amount)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {item.avg_interest.toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="text-right text-green-600">
-                        {item.approved_count}
-                      </TableCell>
-                      <TableCell className="text-right text-red-600">
-                        {item.rejected_count}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+        return loanSummaryData.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No loan summary data available for the selected date range.
           </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Month</TableHead>
+                <TableHead className="text-right">New Loans</TableHead>
+                <TableHead className="text-right">Total Amount</TableHead>
+                <TableHead className="text-right">Avg Interest</TableHead>
+                <TableHead className="text-right">Approved</TableHead>
+                <TableHead className="text-right">Rejected</TableHead>
+                <TableHead className="text-right">Principal Repaid</TableHead>
+                <TableHead className="text-right">Interest Repaid</TableHead>
+                <TableHead className="text-right">Fully Paid</TableHead>
+                <TableHead className="text-right">Avg Term (M)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loanSummaryData.map((item, index) => (
+                <TableRow key={index}>
+                  <TableCell className="font-medium">
+                    {/* Ensure item.month is in 'YYYY-MM' format */}
+                    {new Date(item.month + "-02").toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                    })}
+                  </TableCell>
+                  <TableCell className="text-right">{item.new_loans}</TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(item.total_amount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {parseFloat(String(item.avg_interest)).toFixed(2)}%
+                  </TableCell>
+                  <TableCell className="text-right text-green-600">
+                    {item.approved_count}
+                  </TableCell>
+                  <TableCell className="text-right text-red-600">
+                    {item.rejected_count}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(item.total_principal_repaid)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(item.total_interest_repaid)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {item.fully_paid_loans_count}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {item.avg_loan_term_months
+                      ? parseFloat(String(item.avg_loan_term_months)).toFixed(1)
+                      : "0.0"}{" "}
+                    M
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         );
-
-      case "clientSummary":
-        return (
-          <div className="space-y-6">
-            <div className="overflow-hidden rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Client Name</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead className="text-right">Total Loans</TableHead>
-                    <TableHead className="text-right">Active Loans</TableHead>
-                    <TableHead className="text-right">Total Borrowed</TableHead>
-                    <TableHead className="text-right">
-                      Current Balance
-                    </TableHead>
-                    <TableHead>Payment Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {clientSummaryData.map((client) => (
-                    <TableRow key={client.id}>
-                      <TableCell className="font-medium">
-                        {client.name}
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-sm">
-                            <FiMail className="h-3 w-3" />
-                            {client.email}
-                          </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <FiPhone className="h-3 w-3" />
-                            {client.phone}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {client.total_loans}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {client.active_loans}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(client.total_borrowed)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(client.current_balance)}
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(client.payment_status)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        );
-
       case "paymentHistory":
-        return (
-          <div className="space-y-6">
-            <div className="overflow-hidden rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Total Payments</TableHead>
-                    <TableHead className="text-right">Total Amount</TableHead>
-                    <TableHead className="text-right">On Time</TableHead>
-                    <TableHead className="text-right">Late</TableHead>
-                    <TableHead className="text-right">Avg Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paymentHistoryData.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">
-                        {formatDate(item.date)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {item.total_payments}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(item.total_amount)}
-                      </TableCell>
-                      <TableCell className="text-right text-green-600">
-                        {item.on_time_payments}
-                      </TableCell>
-                      <TableCell className="text-right text-red-600">
-                        {item.late_payments}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(item.avg_payment_amount)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+        return paymentHistoryData.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No payment history data available for the selected date range.
           </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead className="text-right">Total Payments</TableHead>
+                <TableHead className="text-right">Total Amount</TableHead>
+                <TableHead className="text-right">On Time</TableHead>
+                <TableHead className="text-right">Late</TableHead>
+                <TableHead className="text-right">Avg Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paymentHistoryData.map((item, index) => (
+                <TableRow key={index}>
+                  <TableCell className="font-medium">
+                    {formatDate(item.date)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {item.total_payments}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(item.total_amount)}
+                  </TableCell>
+                  <TableCell className="text-right text-green-600">
+                    {item.on_time_payments}
+                  </TableCell>
+                  <TableCell className="text-right text-red-600">
+                    {item.late_payments}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(item.avg_payment_amount)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         );
-
       case "overdueLoans":
-        return (
-          <div className="space-y-6">
-            <div className="overflow-hidden rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Client Name</TableHead>
-                    <TableHead>Contact Info</TableHead>
-                    <TableHead className="text-right">Days Overdue</TableHead>
-                    <TableHead className="text-right">Amount Due</TableHead>
-                    <TableHead className="text-right">Total Balance</TableHead>
-                    <TableHead>Severity</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {overdueLoansData.map((loan) => (
-                    <TableRow key={loan.id}>
-                      <TableCell className="font-medium">
-                        {loan.client_name}
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-sm">
-                            <FiPhone className="h-3 w-3" />
-                            {loan.phone}
-                          </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <FiMail className="h-3 w-3" />
-                            {loan.email}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span
-                          className={`font-semibold ${
-                            loan.days_overdue > 30
-                              ? "text-red-600"
-                              : loan.days_overdue > 7
-                              ? "text-yellow-600"
-                              : "text-orange-600"
-                          }`}
-                        >
-                          {loan.days_overdue} days
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(loan.amount_due)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(loan.loan_amount)}
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(loan.overdue_severity)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm">
-                            <FiPhone className="h-3 w-3 mr-1" />
-                            Call
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            <FiMail className="h-3 w-3 mr-1" />
-                            Email
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+        return overdueLoansData.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No overdue loans found.
           </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client Name</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead className="text-right">Days Overdue</TableHead>
+                <TableHead className="text-right">Amount Due</TableHead>
+                <TableHead className="text-right">Loan Amount</TableHead>
+                <TableHead>Severity</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {overdueLoansData.map((loan) => (
+                <TableRow key={loan.id}>
+                  <TableCell className="font-medium">
+                    {loan.client_name}
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <div className="text-sm">{loan.phone}</div>
+                      <div className="text-sm">{loan.email}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span
+                      className={`font-semibold ${
+                        loan.days_overdue > 30
+                          ? "text-red-600"
+                          : loan.days_overdue > 7
+                          ? "text-yellow-600"
+                          : "text-orange-600"
+                      }`}
+                    >
+                      {loan.days_overdue} days
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(loan.amount_due)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(loan.loan_amount)}
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        loan.overdue_severity === "Severe"
+                          ? "bg-red-100 text-red-800"
+                          : loan.overdue_severity === "Moderate"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-orange-100 text-orange-800"
+                      }`}
+                    >
+                      {loan.overdue_severity}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         );
-
       default:
-        return null;
+        return (
+          <div className="text-center py-8">Please select a report type.</div>
+        );
     }
   };
 
   return (
-    <div className="p-6 space-y-8 animate-fade-in">
-      {/* Enhanced Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 animate-slide-down">
-        <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:16px_16px]"></div>
-        <div className="relative flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-xl">
-              <FiBarChart className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">
-                Reports & Analytics
-              </h1>
-              <p className="text-muted-foreground">
-                Comprehensive insights into your loan management system
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={loadAllData}
-              disabled={isLoading}
-              className="hover-lift"
-            >
-              <FiRefreshCw
-                className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </Button>
-            <Button
-              onClick={() => handleExport('excel')}
-              disabled={isGenerating}
-              className="bg-gradient-to-r from-primary to-primary/90 hover-lift"
-            >
+    <div className="p-6 space-y-6 bg-background min-h-screen">
+      <header className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+        <h1 className="text-3xl font-bold text-foreground">
+          Reports Dashboard
+        </h1>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              loadLoanAnalytics();
+              loadReportData();
+            }}
+            disabled={isLoading}
+          >
+            <FiRefreshCw
+              className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+            />
+            Refresh Data
+          </Button>
+          <Button
+            onClick={() => handleExport("excel")}
+            disabled={isExporting || isLoading}
+          >
+            {isExporting ? (
+              <FiRefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
               <FiDownload className="mr-2 h-4 w-4" />
-              {isGenerating ? "Generating..." : "Export"}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Stats Cards Grid */}
-      {dashboardAnalytics && (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
-          <StatsCard
-            title="Active Loans"
-            value={dashboardAnalytics.overall_stats.total_active_loans}
-            icon={<FiCreditCard className="h-5 w-5" />}
-            variant="default"
-            subtitle="Current portfolio"
-          />
-          <StatsCard
-            title="Total Outstanding"
-            value={formatCurrency(
-              dashboardAnalytics.overall_stats.total_outstanding
             )}
-            icon={<FiDollarSign className="h-5 w-5" />}
-            variant="success"
-            subtitle="Amount to collect"
-          />
-          <StatsCard
-            title="Active Clients"
-            value={dashboardAnalytics.overall_stats.total_active_clients}
-            icon={<FiUsers className="h-5 w-5" />}
-            variant="default"
-            subtitle="Borrowers with loans"
-          />
-          <StatsCard
-            title="Monthly Collections"
-            value={formatCurrency(
-              dashboardAnalytics.overall_stats.monthly_collections
+            Export Excel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => handleExport("csv")}
+            disabled={isExporting || isLoading}
+          >
+            {isExporting ? (
+              <FiRefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FiDownload className="mr-2 h-4 w-4" />
             )}
-            icon={<FiTrendingUp className="h-5 w-5" />}
-            variant="success"
-            subtitle="Last 30 days"
-          />
+            Export CSV
+          </Button>
         </div>
-      )}
+      </header>
 
-      {/* Enhanced Search and Filters */}
-      <Card className="hover-lift animate-scale-in border-border/50 bg-card">
+      {/* Analytics Cards */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Total Loan Value
+            </CardTitle>
+            <FiDollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {formatCurrency(loanAnalytics?.total_loan_value)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Across all active loans
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Loans</CardTitle>
+            <FiCreditCard className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loanAnalytics?.active_loans_count || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Currently active loans
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Average Interest Rate
+            </CardTitle>
+            <FiTrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {parseFloat(
+                String(loanAnalytics?.avg_interest_rate || 0)
+              ).toFixed(2)}
+              %
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Average across active loans
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Overdue Loans</CardTitle>
+            <FiAlertTriangle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loanAnalytics?.overdue_loans_count || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Loans currently past due
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Report Filters and Selection */}
+      <Card>
         <CardHeader>
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FiFilter className="h-5 w-5" />
-                Report Filters
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Customize your report parameters
-              </p>
-            </div>
-          </div>
+          <CardTitle className="flex items-center">
+            <FiFilter className="mr-2 h-5 w-5" />
+            Report Filters
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Report Type
-              </label>
-              <Select value={selectedReport} onValueChange={handleReportChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select report type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="loanSummary">Loan Summary</SelectItem>
-                  <SelectItem value="clientSummary">Client Summary</SelectItem>
-                  <SelectItem value="paymentHistory">
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label
+              htmlFor="reportType"
+              className="block text-sm font-medium text-muted-foreground mb-1"
+            >
+              Report Type
+            </label>
+            <Select
+              value={selectedReport}
+              onValueChange={(value) => setSelectedReport(value as ReportType)}
+            >
+              <SelectTrigger id="reportType">
+                <SelectValue placeholder="Select report type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="loanSummary">
+                  <div className="flex items-center">
+                    <FiBarChart className="mr-2 h-4 w-4" />
+                    Loan Summary
+                  </div>
+                </SelectItem>
+                <SelectItem value="paymentHistory">
+                  <div className="flex items-center">
+                    <FiDollarSign className="mr-2 h-4 w-4" />
                     Payment History
-                  </SelectItem>
-                  <SelectItem value="overdueLoans">Overdue Loans</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                From Date
-              </label>
-              <Input
-                type="date"
-                name="from"
-                value={dateRange.from}
-                onChange={handleDateChange}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">To Date</label>
-              <Input
-                type="date"
-                name="to"
-                value={dateRange.to}
-                onChange={handleDateChange}
-                className="w-full"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                onClick={loadReportData}
-                className="w-full"
-                disabled={isLoading}
-              >
-                <FiEye className="mr-2 h-4 w-4" />
-                Generate Report
-              </Button>
-            </div>
+                  </div>
+                </SelectItem>
+                <SelectItem value="overdueLoans">
+                  <div className="flex items-center">
+                    <FiAlertTriangle className="mr-2 h-4 w-4" />
+                    Overdue Loans
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label
+              htmlFor="dateFrom"
+              className="block text-sm font-medium text-muted-foreground mb-1"
+            >
+              Date From
+            </label>
+            <Input
+              id="dateFrom"
+              type="date"
+              value={dateRange.from}
+              onChange={(e) =>
+                setDateRange({ ...dateRange, from: e.target.value })
+              }
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="dateTo"
+              className="block text-sm font-medium text-muted-foreground mb-1"
+            >
+              Date To
+            </label>
+            <Input
+              id="dateTo"
+              type="date"
+              value={dateRange.to}
+              onChange={(e) =>
+                setDateRange({ ...dateRange, to: e.target.value })
+              }
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Report Content */}
-      <Card className="hover-lift animate-fade-in border-border/50 bg-card">
+      {/* Report Content Area */}
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FiBarChart className="h-5 w-5" />
-            {selectedReport.charAt(0).toUpperCase() +
-              selectedReport.slice(1).replace(/([A-Z])/g, " $1")}
-            Report
+          <CardTitle className="flex items-center">
+            {selectedReport === "loanSummary" && (
+              <FiBarChart className="mr-2 h-5 w-5" />
+            )}
+            {selectedReport === "paymentHistory" && (
+              <FiDollarSign className="mr-2 h-5 w-5" />
+            )}
+            {selectedReport === "overdueLoans" && (
+              <FiAlertTriangle className="mr-2 h-5 w-5" />
+            )}
+            {
+              {
+                loanSummary: "Loan Summary Report",
+                paymentHistory: "Payment History Report",
+                overdueLoans: "Overdue Loans Report",
+              }[selectedReport]
+            }
           </CardTitle>
         </CardHeader>
-        <CardContent>{renderReportContent()}</CardContent>
+        <CardContent className="overflow-x-auto">
+          {renderReportContent()}
+        </CardContent>
       </Card>
     </div>
   );

@@ -43,12 +43,26 @@ export const apiRequest = async <T = any>(
     }
 
     const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) {
+
+    // Check for Excel file
+    if (
+      contentType &&
+      (contentType.includes(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ) ||
+        contentType.includes("application/octet-stream"))
+    ) {
       // For Excel files, return the raw response for the browser to handle download
       return response;
     }
 
-    // For other content types, parse as JSON
+    // Check for other file types
+    if (contentType && !contentType.includes("application/json")) {
+      // For non-JSON content types, return the raw response
+      return response;
+    }
+
+    // For JSON content types, parse as JSON
     const data = await response.json();
     return data;
   } catch (error) {

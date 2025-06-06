@@ -8,19 +8,10 @@ export interface LoanSummaryData {
   approved_amount: number;
   approved_count: number;
   rejected_count: number;
-}
-
-export interface ClientSummaryData {
-  id: number;
-  name: string;
-  email: string;
-  phone: string;
-  total_loans: number;
-  active_loans: number;
-  total_borrowed: number;
-  current_balance: number;
-  total_payments: number;
-  payment_status: string;
+  total_principal_repaid: number;
+  total_interest_repaid: number;
+  fully_paid_loans_count: number;
+  avg_loan_term_months: number;
 }
 
 export interface PaymentHistoryData {
@@ -45,26 +36,11 @@ export interface OverdueLoanData {
   overdue_severity: string;
 }
 
-export interface DashboardAnalytics {
-  overall_stats: {
-    total_active_loans: number;
-    total_outstanding: number;
-    total_active_clients: number;
-    monthly_collections: number;
-  };
-  monthly_performance: Array<{
-    month: string;
-    collected: number;
-    active_clients: number;
-    payment_count: number;
-  }>;
-  loan_status_distribution: Array<{
-    status: string;
-    count: number;
-    total_amount: number;
-  }>;
+export interface LoanAnalytics {
+  total_active_loans: number;
 }
 
+// Get loan summary report
 export const getLoanSummaryReport = async (
   dateFrom?: string,
   dateTo?: string
@@ -79,34 +55,17 @@ export const getLoanSummaryReport = async (
       ? `/api/reports/loan-summary?${queryString}`
       : "/api/reports/loan-summary";
 
-    const response = await apiRequest<LoanSummaryData[]>(url);
-    if (response instanceof Response) {
-      console.error("API request returned raw Response for JSON endpoint (getLoanSummaryReport):", url);
-      throw new Error("Unexpected response format from API.");
-    }
-    return response;
+    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
+    return (await apiRequest<LoanSummaryData[]>(url)) as ApiResponse<
+      LoanSummaryData[]
+    >;
   } catch (error) {
     console.error("Error fetching loan summary report:", error);
     throw error;
   }
 };
 
-export const getClientSummaryReport = async (): Promise<
-  ApiResponse<ClientSummaryData[]>
-> => {
-  try {
-    const response = await apiRequest<ClientSummaryData[]>("/api/reports/client-summary");
-    if (response instanceof Response) {
-      console.error("API request returned raw Response for JSON endpoint (getClientSummaryReport):");
-      throw new Error("Unexpected response format from API.");
-    }
-    return response;
-  } catch (error) {
-    console.error("Error fetching client summary report:", error);
-    throw error;
-  }
-};
-
+// Get payment history report
 export const getPaymentHistoryReport = async (
   dateFrom?: string,
   dateTo?: string
@@ -121,59 +80,108 @@ export const getPaymentHistoryReport = async (
       ? `/api/reports/payment-history?${queryString}`
       : "/api/reports/payment-history";
 
-    const response = await apiRequest<PaymentHistoryData[]>(url);
-    if (response instanceof Response) {
-      console.error("API request returned raw Response for JSON endpoint (getPaymentHistoryReport):", url);
-      throw new Error("Unexpected response format from API.");
-    }
-    return response;
+    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
+    return (await apiRequest<PaymentHistoryData[]>(url)) as ApiResponse<
+      PaymentHistoryData[]
+    >;
   } catch (error) {
     console.error("Error fetching payment history report:", error);
     throw error;
   }
 };
 
+// Get overdue loans report
 export const getOverdueLoansReport = async (): Promise<
   ApiResponse<OverdueLoanData[]>
 > => {
   try {
-    const response = await apiRequest<OverdueLoanData[]>("/api/reports/overdue-loans");
-    if (response instanceof Response) {
-      console.error("API request returned raw Response for JSON endpoint (getOverdueLoansReport):");
-      throw new Error("Unexpected response format from API.");
-    }
-    return response;
+    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
+    return (await apiRequest<OverdueLoanData[]>(
+      "/api/reports/overdue-loans"
+    )) as ApiResponse<OverdueLoanData[]>;
   } catch (error) {
     console.error("Error fetching overdue loans report:", error);
     throw error;
   }
 };
 
-export const getDashboardAnalytics = async (): Promise<
-  ApiResponse<DashboardAnalytics>
+// Get loan analytics
+export const getLoanAnalytics = async (): Promise<
+  ApiResponse<LoanAnalytics>
 > => {
   try {
-    const response = await apiRequest<DashboardAnalytics>("/api/reports/dashboard-analytics");
-    if (response instanceof Response) {
-      console.error("API request returned raw Response for JSON endpoint (getDashboardAnalytics):");
-      throw new Error("Unexpected response format from API.");
-    }
-    return response;
+    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
+    return (await apiRequest<LoanAnalytics>(
+      "/api/reports/loan-analytics"
+    )) as ApiResponse<LoanAnalytics>;
   } catch (error) {
-    console.error("Error fetching dashboard analytics:", error);
+    console.error("Error fetching loan analytics:", error);
     throw error;
   }
 };
 
+// Export report function
 export const exportReport = async (
-  type: "loan_summary" | "client_summary" | "payment_history" | "overdue_loans",
-  format: "json" | "excel" = "json" // Changed csv to excel
-): Promise<ApiResponse<any> | Response> => { // Adjusted return type
+  reportType: "loanSummary" | "paymentHistory" | "overdueLoans",
+  format: "excel" | "csv" | "json" = "excel",
+  dateFrom?: string,
+  dateTo?: string
+): Promise<void> => {
   try {
-    const response = await apiRequest(
-      `/api/reports/export?type=${type}&format=${format}`
+    const params = new URLSearchParams();
+    params.append("type", reportType);
+    params.append("format", format);
+    if (dateFrom) params.append("date_from", dateFrom);
+    if (dateTo) params.append("date_to", dateTo);
+
+    // Get the API URL
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+    const response = await fetch(
+      `${API_URL}/api/reports/export?${params.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      }
     );
-    return response;
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("Authentication failed. Please log in again.");
+      }
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+
+    // Handle file downloads for excel and csv formats
+    if (format === "excel" || format === "csv") {
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("content-disposition");
+      let filename = `${reportType}_report_${
+        new Date().toISOString().split("T")[0]
+      }.${format === "excel" ? "xlsx" : "csv"}`;
+
+      // Extract filename from content-disposition header if available
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } else {
+      // Handle JSON response
+      const data = await response.json();
+      console.log("Export data:", data);
+    }
   } catch (error) {
     console.error("Error exporting report:", error);
     throw error;
