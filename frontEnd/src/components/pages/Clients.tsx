@@ -49,6 +49,7 @@ import {
   ClientStats,
 } from "../../services/clientService";
 import ClientForm from "../forms/ClientForm";
+import { ClientDetailsData } from "../../types/client";
 
 // Add extended interface for editing client with ID
 interface ClientFormDataWithId extends ClientFormData {
@@ -183,10 +184,10 @@ const FormModal: React.FC<FormModalProps> = ({
   );
 };
 
-// Stats Card Component
+// Stats Card Component - fix the interface
 interface StatsCardProps {
   title: string;
-  value: number;
+  value: number | string;
   icon: React.ReactNode;
   variant: "default" | "success" | "warning" | "danger";
 }
@@ -252,7 +253,7 @@ const StatsCard: React.FC<StatsCardProps> = ({
       </CardHeader>
       <CardContent>
         <div className={`text-3xl font-bold ${styles.text} transition-colors`}>
-          {value.toLocaleString()}
+          {typeof value === "number" ? value.toLocaleString() : value}
         </div>
         <div className="flex items-center gap-1 mt-2">
           <FiTrendingUp className="w-3 h-3 text-green-500" />
@@ -865,44 +866,36 @@ const Clients: React.FC = () => {
   };
 
   // Handle opening client details modal
-  const handleViewClientDetails = async (client: Client) => {
+  const handleViewClientDetails = useCallback(async (client: any) => {
+    console.log("[Clients] Viewing details for client:", client);
+
+    setSelectedClientForDetails(null);
+    setFetchClientDetailsError("");
+    setIsClientDetailsModalOpen(true);
     setIsFetchingClientDetails(true);
-    setFetchClientDetailsError(null);
-    // Set basic client info immediately for a better UX, details will load in
-    setSelectedClientForDetails({
-      ...client, // Spread basic client info
-      loans: [], // Initialize with empty arrays
-      upcoming_payments: [],
-      active_loans_count: 0,
-      total_remaining_balance: 0,
-      total_upcoming_payments_amount: 0,
-      // Ensure all other ClientDetailsData fields are present if not in Client
-      // For example, if ClientDetailsData has fields not in Client and not fetched yet:
-      // some_other_detail_field: 'Loading...',
-    });
-    setIsClientDetailsModalOpen(true); // Open modal, it can show loading state
 
     try {
+      console.log(`[Clients] Fetching details for client ID: ${client.id}`);
       const response = await getClientDetailsById(client.id);
+
+      console.log("[Clients] Client details response:", response);
+
       if (response.success && response.data) {
         setSelectedClientForDetails(response.data);
+        setFetchClientDetailsError("");
       } else {
         throw new Error(response.message || "Failed to fetch client details");
       }
-    } catch (err: any) {
-      console.error("Error fetching client details:", err);
+    } catch (error: any) {
+      console.error("[Clients] Error fetching client details:", error);
       setFetchClientDetailsError(
-        err.message ||
-          "An unexpected error occurred while fetching client details."
+        error.message || "Failed to load client details"
       );
-      // Optionally, close the modal or keep it open with an error message
-      // For now, we keep it open, and the modal should display the error
-      // If the modal was opened optimistically, ensure it shows an error state
-      // or provide a way for the user to close it if data loading fails.
+      setSelectedClientForDetails(null);
     } finally {
       setIsFetchingClientDetails(false);
     }
-  };
+  }, []);
 
   // Function to refresh client details if the modal for them is open
   const refreshOpenClientDetails = useCallback(
@@ -1022,364 +1015,301 @@ const Clients: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatsCard
           title="Total Clients"
-          value={clientStats.total.toLocaleString()} // clientStats should now be correctly typed and in scope
+          value={clientStats.total || 0}
           icon={<FiUsers className="w-6 h-6" />}
-          color="blue"
+          variant="default"
         />
         <StatsCard
           title="Active Clients"
-          value={clientStats.active.toLocaleString()} // clientStats should now be correctly typed and in scope
+          value={clientStats.active || 0}
           icon={<FiUserCheck className="w-6 h-6" />}
-          color="green"
+          variant="success"
         />
         <StatsCard
           title="Inactive Clients"
-          value={clientStats.inactive.toLocaleString()} // clientStats should now be correctly typed and in scope
+          value={clientStats.inactive || 0}
           icon={<FiUserX className="w-6 h-6" />}
-          color="yellow"
+          variant="warning"
         />
         <StatsCard
           title="Blacklisted"
-          value={clientStats.blacklisted.toLocaleString()} // clientStats should now be correctly typed and in scope
+          value={clientStats.blacklisted || 0}
           icon={<FiUserMinus className="w-6 h-6" />}
-          color="red"
+          variant="danger"
         />
       </div>
 
       <Card className="hover-lift animate-scale-in border-border/50 bg-card">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FiFilter className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">Search & Filters</CardTitle>
-            </div>
-            <Button variant="ghost" size="sm" className="hover-lift">
-              <FiMoreVertical className="w-4 h-4" />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="relative flex-1">
-              <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5 z-10" />
-              <Input
-                placeholder="Search clients by name, email, or phone..."
-                value={filters.search}
-                onChange={handleSearchChange}
-                className="pl-12 h-12 text-base border-border/50 focus:border-primary/50 bg-background transition-all duration-200 hover:shadow-md focus:shadow-lg"
-              />
-            </div>
-            <div className="relative min-w-[220px]">
-              <FiFilter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5 z-10" />
+        <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 to-primary/10">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+            <CardTitle className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                <FiUsers className="w-4 h-4 text-primary" />
+              </div>
+              Clients ({totalClients})
+            </CardTitle>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative">
+                <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search clients..."
+                  value={filters.search}
+                  onChange={handleSearchChange}
+                  className="pl-10 w-full sm:w-64"
+                />
+              </div>
+
               <select
                 value={filters.status}
                 onChange={handleStatusChange}
-                className="w-full pl-12 pr-4 h-12 text-base border border-border/50 bg-background rounded-md focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all duration-200 hover:shadow-md appearance-none cursor-pointer"
+                className="px-3 py-2 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
               >
-                <option value="">All Status</option>
+                <option value="">All Statuses</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="blacklisted">Blacklisted</option>
               </select>
+
+              <Button
+                onClick={handleAddClient}
+                className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg hover-lift"
+              >
+                <FiPlus className="mr-2 h-4 w-4" />
+                Add Client
+              </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </CardHeader>
 
-      {/* Error message */}
-      {error && (
-        <div
-          className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md shadow-md"
-          role="alert"
-        >
-          <div className="flex">
-            <div className="py-1">
-              <FiAlertTriangle className="h-6 w-6 text-red-500 mr-3" />
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex items-center justify-center p-10">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+              <p className="ml-4 text-muted-foreground">Loading clients...</p>
             </div>
-            <div>
-              <p className="font-bold">Error</p>
-              <p className="text-sm">{error}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Enhanced Content */}
-      {loading ? (
-        <Card className="animate-scale-in border-border/50">
-          <CardContent className="p-16">
-            <div className="flex flex-col items-center justify-center space-y-4">
-              <div className="relative">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary/30"></div>
-                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-primary absolute top-0 left-0"></div>
-              </div>
-              <div className="text-center space-y-2">
-                <p className="text-lg font-medium">Loading clients...</p>
-                <p className="text-sm text-muted-foreground">
-                  Please wait while we fetch your data
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : clients.length === 0 ? (
-        <Card className="animate-fade-in-left border-border/50 bg-gradient-to-br from-background to-muted/10">
-          <CardContent className="p-16">
-            <div className="text-center space-y-6">
-              <div className="relative">
-                <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center animate-bounce-in">
-                  <FiUsers className="w-12 h-12 text-primary" />
-                </div>
-                <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center animate-pulse">
-                  <FiPlus className="w-4 h-4 text-white" />
-                </div>
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-2xl font-bold">
-                  {filters.search || filters.status
-                    ? "No clients found"
-                    : "No clients yet"}
+          ) : error ? (
+            <div className="p-6 bg-destructive/10 border border-destructive/30 rounded-md">
+              <div className="flex items-center">
+                <FiAlertTriangle className="h-6 w-6 text-destructive mr-3" />
+                <h3 className="text-lg font-semibold text-destructive">
+                  Error Loading Clients
                 </h3>
-                <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">
-                  {filters.search || filters.status
-                    ? "Try adjusting your search criteria or filters to find what you're looking for"
-                    : "Get started by adding your first client to begin managing your loan portfolio"}
-                </p>
               </div>
-              {!filters.search && !filters.status && (
-                <Button
-                  onClick={handleAddClient}
-                  size="lg"
-                  className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg hover-lift"
-                >
-                  <FiPlus className="mr-2 h-5 w-5" />
-                  Add Your First Client
-                </Button>
-              )}
+              <p className="mt-2 text-destructive/80">{error}</p>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="hover-lift animate-fade-in-right border-border/50 bg-gradient-to-br from-background via-background to-muted/5 overflow-hidden">
-          <CardHeader className="border-b border-border/50 bg-gradient-to-r from-muted/30 to-transparent">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <FiUsers className="w-5 h-5 text-primary" />
-                Client Directory
-                <Badge variant="secondary" className="ml-2">
-                  {totalClients} total
-                </Badge>
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" className="hover-lift">
-                  <FiEye className="w-4 h-4 mr-2" />
-                  View Options
-                </Button>
-              </div>
+          ) : clients.length === 0 ? (
+            <div className="text-center py-10">
+              <FiUsers className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                No Clients Found
+              </h3>
+              <p className="text-muted-foreground mb-4">
+                {filters.search || filters.status
+                  ? "No clients match your current filters."
+                  : "Get started by adding your first client."}
+              </p>
+              <Button onClick={handleAddClient} className="hover-lift">
+                <FiPlus className="mr-2 h-4 w-4" />
+                Add Client
+              </Button>
             </div>
-          </CardHeader>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border/50 hover:bg-muted/30">
-                <TableHead className="font-semibold">Client</TableHead>
-                <TableHead className="font-semibold">Contact</TableHead>
-                <TableHead className="font-semibold">Location</TableHead>
-                <TableHead className="font-semibold">Status</TableHead>
-                <TableHead className="font-semibold">Joined</TableHead>
-                <TableHead className="text-right font-semibold">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clients.map((client, index) => (
-                <TableRow
-                  key={client.id}
-                  className="hover:bg-muted/40 transition-all duration-300 border-border/30 group stagger-item"
-                  style={{ animationDelay: `${index * 0.05}s` }}
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-primary-foreground font-semibold text-sm shadow-md">
-                        {client.first_name.charAt(0)}
-                        {client.last_name.charAt(0)}
-                      </div>
-                      <div>
-                        <div
-                          className="font-semibold text-foreground group-hover:text-primary transition-colors cursor-pointer"
-                          onClick={() => handleViewClientDetails(client)}
-                        >
-                          {client.first_name} {client.last_name}
-                        </div>
-                        {client.id_type && (
-                          <div className="text-sm text-muted-foreground flex items-center gap-1">
-                            <span className="font-medium">
-                              {client.id_type}:
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-border/50">
+                    <TableHead className="font-semibold">Name</TableHead>
+                    <TableHead className="font-semibold">Contact</TableHead>
+                    <TableHead className="font-semibold">Location</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold">Joined</TableHead>
+                    <TableHead className="font-semibold text-right">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clients.map((client) => (
+                    <TableRow
+                      key={client.id}
+                      className="border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => handleViewClientDetails(client)}
+                    >
+                      <TableCell className="font-medium">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+                            <span className="text-xs font-semibold text-primary">
+                              {client.first_name?.[0]}
+                              {client.last_name?.[0]}
                             </span>
-                            <span>{client.id_number}</span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="space-y-2">
-                      {client.email && (
-                        <div className="flex items-center space-x-2 text-sm group-hover:text-primary transition-colors">
-                          <div className="w-6 h-6 rounded-md bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                            <FiMail className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                          <div>
+                            <div className="font-medium">
+                              {client.first_name} {client.last_name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              ID: {client.id}
+                            </div>
                           </div>
-                          <span className="truncate max-w-[200px]">
-                            {client.email}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {client.email && (
+                            <div className="flex items-center space-x-1 text-sm">
+                              <FiMail className="h-3 w-3 text-muted-foreground" />
+                              <span
+                                className="truncate max-w-[150px]"
+                                title={client.email}
+                              >
+                                {client.email}
+                              </span>
+                            </div>
+                          )}
+                          {client.phone && (
+                            <div className="flex items-center space-x-1 text-sm">
+                              <FiPhone className="h-3 w-3 text-muted-foreground" />
+                              <span>{client.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1 text-sm">
+                          <FiMapPin className="h-3 w-3 text-muted-foreground" />
+                          <span>
+                            {[client.city, client.state, client.country]
+                              .filter(Boolean)
+                              .join(", ") || "N/A"}
                           </span>
                         </div>
-                      )}
-                      {client.phone && (
-                        <div className="flex items-center space-x-2 text-sm group-hover:text-primary transition-colors">
-                          <div className="w-6 h-6 rounded-md bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                            <FiPhone className="h-3 w-3 text-green-600 dark:text-green-400" />
-                          </div>
-                          <span>{client.phone}</span>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 text-sm">
-                      <div className="w-6 h-6 rounded-md bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                        <FiMapPin className="h-3 w-3 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <span className="text-foreground">
-                        {client.city && client.country
-                          ? `${client.city}, ${client.country}`
-                          : client.country || client.city || "-"}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(client.status)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 text-sm">
-                      <div className="w-6 h-6 rounded-md bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                        <FiCalendar className="h-3 w-3 text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <span className="text-foreground">
+                      </TableCell>
+                      <TableCell>{getStatusBadge(client.status)}</TableCell>
+                      <TableCell className="text-muted-foreground">
                         {formatDate(client.created_at)}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end space-x-1 transition-opacity duration-300">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEditClient(client)}
-                        className="h-8 w-8 hover:bg-primary/10 hover:text-primary hover-lift"
-                        title="Edit Client"
-                      >
-                        <FiEdit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteClick(client.id)}
-                        className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive hover-lift"
-                        title="Delete Client"
-                      >
-                        <FiTrash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewClientDetails(client);
+                            }}
+                            className="hover-lift"
+                          >
+                            <FiEye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditClient(client);
+                            }}
+                            className="hover-lift"
+                          >
+                            <FiEdit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(client.id);
+                            }}
+                            className="hover-lift text-destructive hover:text-destructive"
+                          >
+                            <FiTrash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
 
-          {/* Enhanced Pagination */}
+          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t border-border/50 bg-gradient-to-r from-muted/20 to-transparent animate-fade-in">
-              <div className="text-sm text-muted-foreground flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+            <div className="flex items-center justify-between px-6 py-4 border-t border-border/50">
+              <div className="text-sm text-muted-foreground">
                 Showing{" "}
-                <span className="font-semibold text-foreground">
-                  {clients.length}
-                </span>{" "}
-                of{" "}
-                <span className="font-semibold text-foreground">
-                  {totalClients}
-                </span>{" "}
-                clients
+                {Math.min((filters.page - 1) * filters.limit + 1, totalClients)}{" "}
+                to {Math.min(filters.page * filters.limit, totalClients)} of{" "}
+                {totalClients} clients
               </div>
               <div className="flex items-center space-x-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(filters.page! - 1)}
-                  disabled={filters.page === 1}
-                  className="hover-lift border-border/50 hover:border-primary/50"
+                  onClick={() => handlePageChange(filters.page - 1)}
+                  disabled={filters.page <= 1}
+                  className="hover-lift"
                 >
                   Previous
                 </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                    const page = i + 1;
-                    return (
-                      <Button
-                        key={page}
-                        variant={filters.page === page ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => handlePageChange(page)}
-                        className="w-8 h-8 hover-lift"
-                      >
-                        {page}
-                      </Button>
-                    );
-                  })}
-                </div>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const pageNum = i + 1;
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={filters.page === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handlePageChange(pageNum)}
+                      className="hover-lift"
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(filters.page! + 1)}
-                  disabled={filters.page === totalPages}
-                  className="hover-lift border-border/50 hover:border-primary/50"
+                  onClick={() => handlePageChange(filters.page + 1)}
+                  disabled={filters.page >= totalPages}
+                  className="hover-lift"
                 >
                   Next
                 </Button>
               </div>
             </div>
           )}
-        </Card>
-      )}
+        </CardContent>
+      </Card>
 
-      {/* Client Details Modal - Render the new component */}
-      <ClientDetailsModal
-        isOpen={isClientDetailsModalOpen}
-        onClose={() => {
-          setIsClientDetailsModalOpen(false);
-          setFetchClientDetailsError(null); // Clear error when closing modal
-        }}
-        clientDetails={selectedClientForDetails}
-        isFetchingClientDetails={isFetchingClientDetails}
-        fetchClientDetailsError={fetchClientDetailsError}
-        formatDate={formatDate} // Pass formatDate function
-        getStatusBadge={getStatusBadge} // Pass getStatusBadge function
-      />
-
-      {/* Modals with enhanced animations */}
+      {/* Client Form Modal */}
       <FormModal
         isOpen={showClientForm}
         title={editingClient ? "Edit Client" : "Add New Client"}
         onClose={() => setShowClientForm(false)}
       >
-        <div className="animate-scale-in">
-          <ClientForm
-            initialData={editingClient || {}}
-            onSubmit={handleClientSubmit}
-            onCancel={() => setShowClientForm(false)}
-            isSubmitting={isSubmitting}
-          />
-        </div>
+        <ClientForm
+          initialData={editingClient || {}}
+          onSubmit={handleClientSubmit}
+          onCancel={() => setShowClientForm(false)}
+          isSubmitting={isSubmitting}
+        />
       </FormModal>
 
+      {/* Client Details Modal */}
+      <ClientDetailsModal
+        isOpen={isClientDetailsModalOpen}
+        onClose={() => {
+          setIsClientDetailsModalOpen(false);
+          setSelectedClientForDetails(null);
+        }}
+        clientDetails={selectedClientForDetails}
+        isFetchingClientDetails={isFetchingClientDetails}
+        fetchClientDetailsError={fetchClientDetailsError}
+        formatDate={formatDate}
+        getStatusBadge={getStatusBadge}
+      />
+
+      {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={deleteConfirmOpen}
         title="Delete Client"

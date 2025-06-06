@@ -361,19 +361,29 @@ exports.getClientDetails = async (req, res) => {
   try {
     const { id } = req.params;
 
+    console.log(
+      `[ClientController] getClientDetails called for client ID: ${id}`
+    );
+
     // 1. Fetch basic client information
     const [clientRows] = await pool.query(
       "SELECT * FROM clients WHERE id = ?",
       [id]
     );
     if (clientRows.length === 0) {
+      console.log(`[ClientController] Client not found for ID: ${id}`);
       return res
         .status(404)
         .json({ success: false, message: "Client not found" });
     }
     const client = clientRows[0];
+    console.log(
+      `[ClientController] Found client:`,
+      client.first_name,
+      client.last_name
+    );
 
-    // 2. Fetch all loans for the client with proper type mapping
+    // 2. Fetch all loans for the client
     const [loansFromDB] = await pool.query(
       `
       SELECT 
@@ -398,9 +408,13 @@ exports.getClientDetails = async (req, res) => {
       [id]
     );
 
+    console.log(
+      `[ClientController] Found ${loansFromDB.length} loans for client ${id}`
+    );
+
     const processedLoans = loansFromDB.map((loan) => ({
       id: loan.id.toString(),
-      loan_type: loan.purpose || "Personal Loan", // Map purpose to loan_type
+      loan_type: loan.purpose || "Personal Loan",
       loan_amount: parseFloat(loan.loan_amount || 0),
       approved_amount: parseFloat(loan.approved_amount || 0),
       remaining_balance: parseFloat(loan.remaining_balance || 0),
@@ -408,49 +422,41 @@ exports.getClientDetails = async (req, res) => {
       term_months: parseInt(loan.term_months || 0, 10),
       start_date: loan.start_date,
       end_date: loan.end_date,
-      status:
-        loan.status === "active"
-          ? "Active"
-          : loan.status === "paid_off"
-          ? "Paid Off"
-          : loan.status === "completed"
-          ? "Completed"
-          : loan.status === "overdue"
-          ? "Overdue"
-          : loan.status === "pending"
-          ? "Pending"
-          : loan.status === "defaulted"
-          ? "Defaulted"
-          : loan.status === "rejected"
-          ? "Rejected"
-          : loan.status || "Unknown",
+      status: loan.status || "Unknown",
       next_due_date: loan.next_due_date,
     }));
 
-    // Filter active loans (exclude paid_off, completed, rejected, defaulted)
+    // Show all loans, not just active ones, but filter for statistics
     const activeLoans = processedLoans.filter((loan) => {
       const statusLowerCase = loan.status ? loan.status.toLowerCase() : "";
       return (
         statusLowerCase === "active" ||
+        statusLowerCase === "approved" ||
         statusLowerCase === "overdue" ||
         statusLowerCase === "pending"
       );
     });
 
-    // 3. Generate upcoming payments from active loans' next_due_date only
+    console.log(`[ClientController] ${activeLoans.length} active loans found`);
+
+    // 3. Generate upcoming payments from active loans
     const processedUpcomingPayments = activeLoans
       .filter((loan) => {
         const statusLowerCase = loan.status ? loan.status.toLowerCase() : "";
         return (
-          (statusLowerCase === "active" || statusLowerCase === "overdue") &&
+          (statusLowerCase === "active" ||
+            statusLowerCase === "approved" ||
+            statusLowerCase === "overdue") &&
           loan.next_due_date &&
           loan.remaining_balance > 0
         );
       })
       .map((loan) => {
-        // Calculate installment amount - simple division for now
+        // Calculate installment amount
         const installmentAmount =
-          loan.loan_amount && loan.term_months
+          loan.approved_amount && loan.term_months
+            ? loan.approved_amount / loan.term_months
+            : loan.loan_amount && loan.term_months
             ? loan.loan_amount / loan.term_months
             : 0;
 
@@ -466,25 +472,25 @@ exports.getClientDetails = async (req, res) => {
       })
       .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
 
-    // 4. Calculate summary statistics using only active loans
-    const activeLoanCount = activeLoans.length;
+    console.log(
+      `[ClientController] ${processedUpcomingPayments.length} upcoming payments found`
+    );
 
+    // 4. Calculate summary statistics
+    const activeLoanCount = activeLoans.length;
     const totalRemainingBalance = activeLoans.reduce(
       (sum, loan) => sum + loan.remaining_balance,
       0
     );
-
     const totalUpcomingPaymentsAmount = processedUpcomingPayments.reduce(
-      (sum, payment) => {
-        return sum + payment.amount_due;
-      },
+      (sum, payment) => sum + payment.amount_due,
       0
     );
 
-    // 5. Build response - return activeLoans instead of all loans for the loans array
+    // 5. Build response - return all loans for display
     const responseData = {
       ...client,
-      loans: activeLoans, // Only return active loans in the loans array
+      loans: processedLoans, // Return all loans, not just active ones
       upcoming_payments: processedUpcomingPayments,
       active_loans_count: activeLoanCount,
       total_remaining_balance: parseFloat(totalRemainingBalance.toFixed(2)),
@@ -493,12 +499,16 @@ exports.getClientDetails = async (req, res) => {
       ),
     };
 
+    console.log(
+      `[ClientController] Sending response with ${responseData.loans.length} loans and ${responseData.upcoming_payments.length} upcoming payments`
+    );
+
     res.status(200).json({
       success: true,
       data: responseData,
     });
   } catch (error) {
-    console.error("Error fetching client details:", error);
+    console.error("[ClientController] Error fetching client details:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch client details",

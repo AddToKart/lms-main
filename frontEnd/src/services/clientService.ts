@@ -1,4 +1,10 @@
 import { ApiResponse, PaginatedResponse } from "../types/common";
+import {
+  ClientDetailsData,
+  ClientLoan,
+  ClientUpcomingPayment,
+  ClientDetailsApiResponse,
+} from "../types/client";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -300,36 +306,6 @@ export const deleteClient = async (id: number): Promise<ApiResponse<null>> => {
   }
 };
 
-export const getClientDetailsById = async (
-  id: number
-): Promise<ApiResponse<Client>> => {
-  try {
-    console.log("[ClientService] Fetching client details with ID:", id);
-
-    const response = await fetch(`${API_URL}/api/clients/${id}`, {
-      method: "GET",
-      headers: getAuthHeaders(),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log("[ClientService] Client details response:", data);
-
-    return data;
-  } catch (error: any) {
-    console.error("[ClientService] Error fetching client details:", error);
-
-    return {
-      success: false,
-      message: error.message || "Failed to fetch client details",
-      data: null,
-    };
-  }
-};
-
 export const getClientStats = async (): Promise<ApiResponse<ClientStats>> => {
   try {
     console.log("[ClientService] Fetching client stats");
@@ -395,9 +371,38 @@ export const getClientStats = async (): Promise<ApiResponse<ClientStats>> => {
 
 // Export additional functions for compatibility
 export { getClients as fetchClients };
-// Add these exports if they're not already there
-export type {
-  ClientDetailsData,
-  ClientLoan,
-  ClientUpcomingPayment,
-} from "../types/client";
+export * from "../types/client";
+
+// Add the getClientDetailsById function
+export const getClientDetailsById = async (
+  clientId: number
+): Promise<ClientDetailsApiResponse> => {
+  try {
+    const token = localStorage.getItem("token");
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+    console.log(`[ClientService] Fetching details for client ID: ${clientId}`);
+
+    const response = await fetch(`${API_URL}/api/clients/${clientId}/details`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    console.log(`[ClientService] Response status: ${response.status}`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log(`[ClientService] Client details response:`, data);
+
+    return data;
+  } catch (error: any) {
+    console.error("[ClientService] Error fetching client details:", error);
+    throw error;
+  }
+};
