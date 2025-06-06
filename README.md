@@ -133,6 +133,7 @@ cd backEnd
 
 ```bash
 npm install
+npm install colors@^1.4.0 express-rate-limit@^7.1.5 helmet@^7.1.0
 ```
 
 #### **Environment Configuration**
