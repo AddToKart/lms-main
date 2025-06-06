@@ -250,14 +250,37 @@ const Reports: React.FC = () => {
   }, [dateRange.from, dateRange.to]);
 
   const handleExport = async (format: "excel" | "json" | "csv") => {
-    if (!selectedReport) return;
+    if (!selectedReport) {
+      showToast("Please select a report type first.", "error");
+      return;
+    }
+
     setIsExporting(true);
     try {
+      console.log(`Starting export: ${selectedReport} as ${format}`);
       await exportReport(selectedReport, format, dateRange.from, dateRange.to);
-      showToast("Report exported successfully!", "success");
+      showToast(
+        `${selectedReport} report exported successfully as ${format.toUpperCase()}!`,
+        "success"
+      );
     } catch (error: any) {
       console.error("Export error:", error);
-      showToast(error.message || "An error occurred during export.", "error");
+
+      // Handle specific error cases
+      if (error.message.includes("Authentication expired")) {
+        showToast("Your session has expired. Please log in again.", "error");
+        // Optionally redirect to login
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 2000);
+      } else if (error.message.includes("Unable to connect")) {
+        showToast(
+          "Unable to connect to server. Please check your internet connection.",
+          "error"
+        );
+      } else {
+        showToast(error.message || "An error occurred during export.", "error");
+      }
     } finally {
       setIsExporting(false);
     }
