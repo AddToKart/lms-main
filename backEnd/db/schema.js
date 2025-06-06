@@ -193,6 +193,87 @@ const createTables = async () => {
       );
     }
 
+    // Attempt to add 'approval_date' column to 'loans' table if necessary
+    try {
+      const [approvalDateColInfo] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'approval_date'`
+      );
+      if (approvalDateColInfo.length === 0) {
+        console.log("   🔧 Adding 'approval_date' column to 'loans' table...");
+        // Adding approval_date after remaining_balance as per the CREATE TABLE definition
+        await pool.execute(
+          `ALTER TABLE loans ADD COLUMN approval_date DATE NULL DEFAULT NULL AFTER remaining_balance`
+        );
+        console.log("      ✅ Column 'approval_date' added.");
+      }
+    } catch (fixApprovalDateError) {
+      console.error(
+        "   ❌ Error during 'loans' table 'approval_date' column check/fix:",
+        fixApprovalDateError.message
+      );
+    }
+
+    // Attempt to add 'approval_notes' column to 'loans' table if necessary
+    try {
+      const [approvalNotesColInfo] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'approval_notes'`
+      );
+      if (approvalNotesColInfo.length === 0) {
+        console.log("   🔧 Adding 'approval_notes' column to 'loans' table...");
+        // Adding approval_notes after approval_date
+        await pool.execute(
+          `ALTER TABLE loans ADD COLUMN approval_notes TEXT DEFAULT NULL AFTER approval_date`
+        );
+        console.log("      ✅ Column 'approval_notes' added.");
+      }
+    } catch (fixApprovalNotesError) {
+      console.error(
+        "   ❌ Error during 'loans' table 'approval_notes' column check/fix:",
+        fixApprovalNotesError.message
+      );
+    }
+
+    // Attempt to add 'approved_by' column to 'loans' table if necessary and ensure FK
+    try {
+      const [approvedByColInfo] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND COLUMN_NAME = 'approved_by'`
+      );
+      if (approvedByColInfo.length === 0) {
+        console.log("   🔧 Adding 'approved_by' column to 'loans' table...");
+        // Adding approved_by after approval_notes
+        await pool.execute(
+          `ALTER TABLE loans ADD COLUMN approved_by INT NULL DEFAULT NULL AFTER approval_notes`
+        );
+        console.log("      ✅ Column 'approved_by' added.");
+      }
+      // Ensure foreign key for approved_by exists
+      const [fkApprovedByConstraints] = await pool.execute(
+        `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' 
+           AND COLUMN_NAME = 'approved_by' AND REFERENCED_TABLE_NAME = 'users'`
+      );
+      if (fkApprovedByConstraints.length === 0) {
+        console.log(
+          "   🔧 Adding foreign key for 'approved_by' in 'loans' table..."
+        );
+        await pool.execute(`
+          ALTER TABLE loans 
+          ADD CONSTRAINT fk_loans_approved_by 
+          FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL`);
+        console.log(
+          "      ✅ Foreign key for 'approved_by' in 'loans' table added."
+        );
+      }
+    } catch (fixApprovedByError) {
+      console.error(
+        "   ❌ Error during 'loans' table 'approved_by' column/FK check/fix:",
+        fixApprovedByError.message
+      );
+    }
+
     // Fix status column type if it exists but is wrong type
     try {
       const [statusColInfo] = await pool.execute(

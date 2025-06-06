@@ -38,6 +38,13 @@ export interface ClientFilters {
   status?: "" | "active" | "inactive" | "blacklisted";
 }
 
+export interface ClientStats {
+  total: number;
+  active: number;
+  inactive: number;
+  blacklisted: number;
+}
+
 export interface ClientResponse {
   success: boolean;
   message: string;

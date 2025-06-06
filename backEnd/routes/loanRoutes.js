@@ -1,32 +1,55 @@
 const express = require("express");
+
+// Import the whole module first for debugging
 const loanController = require("../controllers/loanController");
+console.log("--- Debugging loanRoutes.js ---");
+console.log(
+  "Imported loanController module:",
+  typeof loanController,
+  Object.keys(loanController)
+);
+console.log(
+  "Type of loanController.getLoanStats:",
+  typeof loanController.getLoanStats
+);
+console.log("--- End Debugging loanRoutes.js ---");
+
+// Then destructure
+const {
+  createLoan,
+  getLoans,
+  getLoanById,
+  updateLoan,
+  deleteLoan,
+  approveLoan,
+  rejectLoan,
+  getLoanStats, // This is the function causing issues if undefined
+  getClientsWithLoans,
+} = loanController;
+
 const { protect, restrictTo } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
-// Protect all routes
+// Apply protect middleware to all routes below
 router.use(protect);
 
-// Get loan statistics (must come before /:id route)
-router.get("/stats", loanController.getLoanStats);
+router.post("/", restrictTo("admin", "manager", "officer"), createLoan);
+router.get("/", restrictTo("admin", "manager", "officer"), getLoans);
+// This is line 14 (approx, after comments and new logs) where the error occurs if getLoanStats is undefined
+router.get("/stats", restrictTo("admin", "manager"), getLoanStats);
 
-// Get active loans for payment dropdown
-router.get("/active", loanController.getActiveLoans);
+router.get(
+  "/clients",
+  restrictTo("admin", "manager", "officer"),
+  getClientsWithLoans
+);
 
-// Get all loans with filtering and pagination
-router.route("/").get(loanController.getLoans).post(loanController.createLoan);
+router.get("/:id", restrictTo("admin", "manager", "officer"), getLoanById);
+router.put("/:id", restrictTo("admin", "manager"), updateLoan);
+router.delete("/:id", restrictTo("admin", "manager"), deleteLoan);
 
-// Get a single loan by ID
-router
-  .route("/:id")
-  .get(loanController.getLoanById)
-  .put(loanController.updateLoan)
-  .delete(restrictTo("admin"), loanController.deleteLoan);
-
-// Approve a loan (admin only)
-router.patch("/:id/approve", restrictTo("admin"), loanController.approveLoan);
-
-// Reject a loan (admin only)
-router.patch("/:id/reject", restrictTo("admin"), loanController.rejectLoan);
+router.put("/:id/approve", restrictTo("admin", "manager"), approveLoan);
+router.put("/:id/reject", restrictTo("admin", "manager"), rejectLoan);
 
 module.exports = router;

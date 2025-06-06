@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   FiSearch,
   FiPlus,
@@ -23,7 +23,8 @@ import {
   FiCheck,
   FiXCircle,
   FiCheckCircle,
-  FiSettings, // Add this missing import
+  FiSettings,
+  FiShield, // Add FiShield here
 } from "react-icons/fi";
 import {
   Card,
@@ -44,18 +45,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import LoanForm from "../forms/LoanForm";
-import type {
-  Loan,
-  LoanFilters,
-  LoanFormData,
-  LoanStats,
-} from "../../types/loan";
 import {
   getLoans,
+  deleteLoan,
   createLoan,
   updateLoan,
-  deleteLoan,
-  getLoanStats,
+  approveLoan, // Add approveLoan
+  rejectLoan, // Add rejectLoan
+  getLoanStats as fetchLoanStatsService, // Renamed to avoid conflict
+  Loan,
+  LoanFormData,
+  LoanFilters,
+  LoanStats,
 } from "../../services/loanService";
 
 // Enhanced Modal component with glassmorphism
@@ -280,6 +281,50 @@ const Loans: React.FC = () => {
   });
   const [isProcessingApproval, setIsProcessingApproval] = useState(false);
 
+  // Simple toast function
+  const showToast = useCallback(
+    (message: string, type: "success" | "error" = "success") => {
+      const toastId = `toast-${Date.now()}`;
+      const toast = document.createElement("div");
+      toast.id = toastId;
+      toast.className = `fixed top-4 right-4 z-[1000] px-4 py-3 rounded-md shadow-lg text-white font-semibold text-sm transition-all duration-300 ease-in-out transform translate-x-full opacity-0 ${
+        type === "success" ? "bg-green-500" : "bg-red-500"
+      }`;
+      toast.textContent = message;
+
+      const closeButton = document.createElement("button");
+      closeButton.innerHTML = "&times;";
+      closeButton.className =
+        "ml-3 font-bold text-lg leading-none hover:text-white/70";
+      closeButton.onclick = () => {
+        toast.classList.remove("translate-x-0", "opacity-100");
+        toast.classList.add("translate-x-full", "opacity-0");
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 300);
+      };
+      toast.appendChild(closeButton);
+
+      document.body.appendChild(toast);
+
+      // Animate in
+      setTimeout(() => {
+        toast.classList.remove("translate-x-full", "opacity-0");
+        toast.classList.add("translate-x-0", "opacity-100");
+      }, 50); // Short delay to allow CSS transition
+
+      // Auto-dismiss
+      setTimeout(() => {
+        if (document.body.contains(toast)) {
+          closeButton.click(); // Trigger the close animation
+        }
+      }, 3000);
+    },
+    []
+  );
+
   // Fetch loans on component mount and when filters change
   useEffect(() => {
     fetchLoans();
@@ -387,7 +432,7 @@ const Loans: React.FC = () => {
   // Function to fetch loan statistics with comprehensive null checks
   const fetchLoanStats = async () => {
     try {
-      const response = await getLoanStats();
+      const response = await fetchLoanStatsService();
       console.log("Loan stats response:", response); // Debug log
 
       if (response && typeof response === "object") {
@@ -541,7 +586,23 @@ const Loans: React.FC = () => {
 
   // Fetch stats after loans are loaded
   useEffect(() => {
-    fetchLoanStats();
+    // fetchLoanStats(); // Original call
+    fetchLoanStatsService()
+      .then((response) => {
+        // Use renamed service import
+        if (response && response.success && response.data) {
+          setLoanStats(response.data);
+        } else {
+          console.error(
+            "Failed to fetch loan stats for display:",
+            response?.message
+          );
+          // Optionally set an error state for stats or use default/fallback
+        }
+      })
+      .catch((err) => {
+        console.error("Exception fetching loan stats for display:", err);
+      });
   }, [loans]); // Depend on loans so stats update when loans change
 
   // Handle search input change
@@ -610,47 +671,45 @@ const Loans: React.FC = () => {
       }
 
       if (validationErrors.length > 0) {
-        throw new Error(validationErrors.join(". "));
+        setError(validationErrors.join(" "));
+        showToast(validationErrors.join(" \n"), "error"); // Use showToast here
+        setIsSubmitting(false);
+        return;
       }
-
-      // Prepare the submission data with proper type conversion
-      const submissionData: LoanFormData = {
-        client_id: Number(data.client_id),
-        loan_amount: Number(data.loan_amount),
-        interest_rate: Number(data.interest_rate),
-        term_months: Number(data.term_months),
-        purpose: data.purpose?.trim() || "",
-        start_date: data.start_date || new Date().toISOString().split("T")[0],
-        status: data.status || "pending",
-        approved_amount: data.approved_amount
-          ? Number(data.approved_amount)
-          : Number(data.loan_amount),
-      };
-
-      console.log("Prepared submission data:", submissionData);
 
       let response;
       if (editingLoan && editingLoan.id) {
-        console.log("Updating existing loan with ID:", editingLoan.id);
-        response = await updateLoan(editingLoan.id, submissionData);
+        console.log("Updating loan with ID:", editingLoan.id);
+        response = await updateLoan(editingLoan.id, data);
       } else {
-        console.log("Creating new loan");
-        response = await createLoan(submissionData);
+        console.log("Creating new loan.");
+        response = await createLoan(data);
       }
 
       console.log("Loan submission response:", response);
-      console.log("=== LOAN SUBMISSION SUCCESS ===");
 
-      // Refresh loan list and stats
-      console.log("Refreshing loan data...");
-      await Promise.all([fetchLoans(), fetchLoanStats()]);
-
-      // Close the form
-      setShowLoanForm(false);
-      setEditingLoan(null);
-
-      // Show success message (you can add a toast notification here)
-      console.log("Loan saved successfully!");
+      if (response && response.success) {
+        showToast(
+          `Loan ${editingLoan ? "updated" : "created"} successfully!`,
+          "success"
+        );
+        setShowLoanForm(false);
+        setEditingLoan(null);
+        fetchLoans(); // Refresh the loans list
+        fetchLoanStats(); // Refresh stats
+      } else {
+        const errorMsg =
+          response?.message ||
+          `Failed to ${editingLoan ? "update" : "create"} loan.`;
+        console.error(
+          `Error ${editingLoan ? "updating" : "creating"} loan:`,
+          errorMsg,
+          "Full response:",
+          response
+        );
+        setError(errorMsg);
+        showToast(errorMsg, "error"); // Use showToast here
+      }
     } catch (err: any) {
       console.error("=== LOAN SUBMISSION ERROR ===");
       console.error("Error details:", err);
@@ -672,6 +731,7 @@ const Loans: React.FC = () => {
 
       console.error("Final error message:", errorMessage);
       setError(errorMessage);
+      showToast(errorMessage, "error"); // Use showToast here
     } finally {
       setIsSubmitting(false);
       console.log("=== LOAN SUBMISSION END ===");
@@ -688,15 +748,28 @@ const Loans: React.FC = () => {
   const handleDeleteConfirm = async () => {
     if (loanToDelete === null) return;
 
+    setIsSubmitting(true); // Reuse for general submission state
+    setError(null);
     try {
-      await deleteLoan(loanToDelete);
-      await Promise.all([fetchLoans(), fetchLoanStats()]);
-    } catch (err) {
-      console.error("Error deleting loan:", err);
-      setError("Failed to delete loan. Please try again.");
+      const response = await deleteLoan(loanToDelete);
+      if (response && response.success) {
+        showToast("Loan deleted successfully!", "success");
+        fetchLoans();
+        fetchLoanStats();
+      } else {
+        const errorMsg = response?.message || "Failed to delete loan.";
+        setError(errorMsg);
+        showToast(errorMsg, "error"); // Use showToast here
+      }
+    } catch (err: any) {
+      const exceptionMsg =
+        err.message || "An unexpected error occurred while deleting the loan.";
+      setError(exceptionMsg);
+      showToast(exceptionMsg, "error"); // Use showToast here
     } finally {
       setDeleteConfirmOpen(false);
       setLoanToDelete(null);
+      setIsSubmitting(false);
     }
   };
 
@@ -736,58 +809,81 @@ const Loans: React.FC = () => {
 
   // Handle loan approval submission
   const handleApprovalSubmit = async () => {
-    if (!approvalData.loan) return; // Use approvalData.loan
-
+    if (!approvalData.loan) {
+      setError("No loan selected for approval/rejection.");
+      showToast("No loan selected for approval/rejection.", "error"); // Use showToast
+      return;
+    }
     setIsProcessingApproval(true);
     setError(null);
 
+    const loanId = approvalData.loan.id;
+
     try {
-      let calculatedInstallmentAmount: number | undefined = undefined;
-      if (
-        approvalData.action === "approve" &&
-        approvalData.approved_amount &&
-        approvalData.approved_amount > 0
-      ) {
-        calculatedInstallmentAmount = calculateInstallmentAmount(
-          approvalData.approved_amount, // Use the actual approved amount
-          approvalData.loan.interest_rate,
-          approvalData.loan.term_months
+      let response;
+      if (approvalData.action === "approve") {
+        // Ensure approved_amount is a number
+        const numericApprovedAmount = Number(approvalData.approved_amount);
+        if (isNaN(numericApprovedAmount) || numericApprovedAmount <= 0) {
+          setError("Approved amount must be a positive number.");
+          showToast("Approved amount must be a positive number.", "error"); // Use showToast
+          setIsProcessingApproval(false);
+          return;
+        }
+        console.log(
+          `[Loans.tsx] Calling approveLoan service for ID: ${loanId} with amount: ${numericApprovedAmount}, notes: ${approvalData.notes}`
         );
+        response = await approveLoan(loanId, {
+          // Use approveLoan service
+          approved_amount: numericApprovedAmount,
+          notes: approvalData.notes,
+        });
+      } else {
+        // 'reject' action
+        console.log(
+          `[Loans.tsx] Calling rejectLoan service for ID: ${loanId} with notes: ${approvalData.notes}`
+        );
+        response = await rejectLoan(loanId, { notes: approvalData.notes }); // Use rejectLoan service
       }
 
-      // Create proper LoanFormData object
-      const submissionData: LoanFormData = {
-        client_id: approvalData.loan.client_id,
-        loan_amount: approvalData.loan.loan_amount, // Original requested amount
-        interest_rate: approvalData.loan.interest_rate,
-        term_months: approvalData.loan.term_months,
-        purpose: approvalData.loan.purpose || "", // Ensure purpose is provided
-        start_date:
-          approvalData.loan.start_date ||
-          new Date().toISOString().split("T")[0],
-        status: approvalData.action === "approve" ? "active" : "rejected",
-        approved_amount:
-          approvalData.action === "approve" ? approvalData.approved_amount : 0,
-        installment_amount: calculatedInstallmentAmount, // Add calculated installment amount
-      };
+      console.log("[Loans.tsx] Approval/Rejection response:", response);
 
-      await updateLoan(approvalData.loan.id, submissionData);
-
-      // Refresh loan list and stats
-      await Promise.all([fetchLoans(), fetchLoanStats()]);
-
-      setShowApprovalModal(false);
-      setLoanToApprove(null); // Clear loanToApprove as well
-      setApprovalData({
-        // Reset approvalData
-        approved_amount: 0,
-        notes: "",
-        action: "approve",
-        loan: null,
-      });
+      if (response && response.success && response.data) {
+        showToast(
+          `Loan ${
+            approvalData.action === "approve" ? "approved" : "rejected"
+          } successfully!`,
+          "success"
+        );
+        setShowApprovalModal(false);
+        fetchLoans(); // Refresh the loans list
+        fetchLoanStats(); // Refresh stats
+      } else {
+        const errorMsg =
+          response?.message || `Failed to ${approvalData.action} loan.`;
+        console.error(
+          `[Loans.tsx] Error ${approvalData.action} loan:`,
+          errorMsg,
+          "Full response:",
+          response
+        );
+        setError(errorMsg);
+        showToast(errorMsg, "error"); // Use showToast here
+        // Keep modal open for user to see error or retry
+      }
     } catch (err: any) {
-      console.error("Error processing loan approval:", err);
-      setError(`Failed to ${approvalData.action} loan. Please try again.`);
+      console.error(
+        `[Loans.tsx] Exception during ${approvalData.action} loan:`,
+        err
+      );
+      const exceptionMsg =
+        err.message ||
+        `An unexpected error occurred while ${
+          approvalData.action === "approve" ? "approving" : "rejecting"
+        } the loan.`;
+      setError(exceptionMsg);
+      showToast(exceptionMsg, "error"); // Use showToast here
+      // Keep modal open
     } finally {
       setIsProcessingApproval(false);
     }
@@ -798,61 +894,48 @@ const Loans: React.FC = () => {
     const safeStatus = status || "pending";
     switch (safeStatus) {
       case "active":
+      case "approved": // Treat 'approved' status visually as 'active'
         return (
-          <Badge
-            variant="success"
-            className="bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md"
-          >
-            <div className="w-2 h-2 bg-white rounded-full mr-1.5 animate-pulse"></div>
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 shadow-sm border border-green-200">
+            <span className="w-2 h-2 mr-2 bg-green-500 rounded-full animate-pulse"></span>
             Active
-          </Badge>
-        );
-      case "completed":
-      case "paid": // Added 'paid' to show as completed
-        return (
-          <Badge
-            variant="secondary"
-            className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-md"
-          >
-            <div className="w-2 h-2 bg-white/70 rounded-full mr-1.5"></div>
-            {safeStatus === "paid" ? "Paid" : "Completed"}
-          </Badge>
+          </span>
         );
       case "pending":
         return (
-          <Badge
-            variant="warning"
-            className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-md"
-          >
-            <div className="w-2 h-2 bg-white rounded-full mr-1.5"></div>
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700 shadow-sm border border-yellow-200">
+            <span className="w-2 h-2 mr-2 bg-yellow-500 rounded-full animate-pulse"></span>
             Pending
-          </Badge>
+          </span>
+        );
+      case "paid_off":
+      case "completed":
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 shadow-sm border border-blue-200">
+            <span className="w-2 h-2 mr-2 bg-blue-500 rounded-full"></span>
+            Completed
+          </span>
+        );
+      case "rejected":
+      case "defaulted":
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 shadow-sm border border-red-200">
+            <span className="w-2 h-2 mr-2 bg-red-500 rounded-full"></span>
+            {safeStatus.charAt(0).toUpperCase() + safeStatus.slice(1)}
+          </span>
         );
       case "overdue":
         return (
-          <Badge
-            variant="danger"
-            className="bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-md"
-          >
-            <div className="w-2 h-2 bg-white rounded-full mr-1.5"></div>
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 shadow-sm border border-orange-200">
+            <span className="w-2 h-2 mr-2 bg-orange-500 rounded-full animate-ping-slow"></span>
             Overdue
-          </Badge>
-        );
-      case "rejected":
-        return (
-          <Badge
-            variant="outline"
-            className="border-red-500/50 text-red-600 bg-red-500/10 shadow-sm"
-          >
-            <FiXCircle className="mr-1.5 h-3 w-3" />
-            Rejected
-          </Badge>
+          </span>
         );
       default:
         return (
-          <Badge variant="secondary">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 shadow-sm border border-gray-200">
             {safeStatus.charAt(0).toUpperCase() + safeStatus.slice(1)}
-          </Badge>
+          </span>
         );
     }
   };
@@ -934,43 +1017,66 @@ const Loans: React.FC = () => {
 
       {/* Enhanced Stats Cards Grid */}
       {loanStats && (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
-          <div className="stagger-item">
-            <StatsCard
-              title="Total Loans"
-              value={(loanStats.total_loans || 0).toString()}
-              icon={<FiCreditCard className="h-5 w-5" />}
-              variant="default"
-              subtitle={`${loans.length} currently loaded`}
-            />
-          </div>
-          <div className="stagger-item">
-            <StatsCard
-              title="Portfolio Value"
-              value={formatCurrency(loanStats.total_loan_amount || 0)}
-              icon={<FiDollarSign className="h-5 w-5" />}
-              variant="success"
-              subtitle="Active & approved loans"
-            />
-          </div>
-          <div className="stagger-item">
-            <StatsCard
-              title="Active Loans"
-              value={(loanStats.active_loans || 0).toString()}
-              icon={<FiTrendingUp className="h-5 w-5" />}
-              variant="warning"
-              subtitle="Currently disbursed"
-            />
-          </div>
-          <div className="stagger-item">
-            <StatsCard
-              title="Avg Interest Rate"
-              value={`${(loanStats.average_interest_rate || 0).toFixed(2)}%`}
-              icon={<FiPercent className="h-5 w-5" />}
-              variant="danger"
-              subtitle="Across all loans"
-            />
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-6 animate-fade-in-up">
+          <StatsCard
+            title="Total Loans"
+            value={(loanStats.total_loans || 0).toLocaleString()}
+            icon={<FiCreditCard />}
+            variant="default"
+          />
+          <StatsCard
+            title="Total Loan Amount"
+            value={formatCurrency(loanStats.total_loan_amount || 0)}
+            icon={<FiDollarSign />}
+            variant="default"
+          />
+          <StatsCard
+            title="Active Loans"
+            value={(loanStats.active_loans || 0).toLocaleString()}
+            icon={<FiActivity />} // Changed icon for variety
+            variant="success"
+          />
+          <StatsCard
+            title="Avg. Interest Rate"
+            // Safeguard: Ensure average_interest_rate is a number before calling toFixed
+            value={`${(typeof loanStats.average_interest_rate === "number" &&
+            !isNaN(loanStats.average_interest_rate)
+              ? loanStats.average_interest_rate
+              : 0
+            ).toFixed(2)}%`}
+            icon={<FiPercent />}
+            variant="default"
+            subtitle="Average rate for all loans"
+          />
+          <StatsCard
+            title="Completed Loans"
+            value={(loanStats.completed_loans || 0).toLocaleString()}
+            icon={<FiCheckCircle />}
+            variant="success"
+            subtitle="Successfully paid off"
+          />
+          <StatsCard
+            title="Pending Approval"
+            value={(loanStats.pending_loans || 0).toLocaleString()}
+            icon={<FiClock />} // Changed icon
+            variant="warning"
+            subtitle="Awaiting review"
+          />
+          <StatsCard
+            title="Overdue Loans"
+            value={(loanStats.overdue_loans || 0).toLocaleString()}
+            icon={<FiAlertTriangle />}
+            variant="danger"
+            subtitle="Past due date"
+          />
+          {/* Example of a new stat card, if you add more stats */}
+          <StatsCard
+            title="Portfolio Health" // Placeholder
+            value={"Good"} // Placeholder
+            icon={<FiShield />} // Placeholder
+            variant="default"
+            subtitle="Overall risk assessment" // Placeholder
+          />
         </div>
       )}
 

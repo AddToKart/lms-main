@@ -3,81 +3,97 @@ const pool = require("../db/database");
 // Get all clients with filtering and pagination
 exports.getClients = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", status = "" } = req.query;
+    console.log("[ClientController] GET /api/clients - Request received");
+    console.log("[ClientController] Query params:", req.query);
+    console.log("[ClientController] User:", req.user?.id);
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 1000); // Allow up to 1000
     const offset = (page - 1) * limit;
-    let query = `
-      SELECT 
-        c.*,
-        COUNT(l.id) as loan_count,
-        COALESCE(SUM(l.loan_amount), 0) as total_borrowed
-      FROM clients c
-      LEFT JOIN loans l ON c.id = l.client_id
-      WHERE 1=1
-    `;
+    const search = req.query.search || "";
+    const status = req.query.status || "";
 
+    console.log("[ClientController] Parsed params:", {
+      page,
+      limit,
+      offset,
+      search,
+      status,
+    });
+
+    // Build the WHERE clause
+    let whereClause = "";
     const queryParams = [];
 
-    // Add search filter
     if (search) {
-      query += ` AND (CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)`;
+      whereClause = `WHERE (CONCAT(first_name, ' ', last_name) LIKE ? OR email LIKE ? OR phone LIKE ?)`;
       const searchTerm = `%${search}%`;
       queryParams.push(searchTerm, searchTerm, searchTerm);
     }
 
-    // Add status filter
-    if (status && ["active", "inactive", "blacklisted"].includes(status)) {
-      query += ` AND c.status = ?`;
+    if (status) {
+      whereClause += whereClause ? " AND status = ?" : "WHERE status = ?";
       queryParams.push(status);
     }
 
-    // Add GROUP BY clause
-    query += ` GROUP BY c.id`;
-
-    // Add sorting
-    query += ` ORDER BY c.created_at DESC`;
-
-    // Add pagination
-    query += ` LIMIT ? OFFSET ?`;
-    queryParams.push(parseInt(limit), parseInt(offset));
-
-    const [clients] = await pool.query(query, queryParams);
+    console.log("[ClientController] WHERE clause:", whereClause);
+    console.log("[ClientController] Query params:", queryParams);
 
     // Get total count
-    let countQuery = `SELECT COUNT(DISTINCT c.id) as total FROM clients c WHERE 1=1`;
-    const countParams = [];
+    const countQuery = `SELECT COUNT(*) as total FROM clients ${whereClause}`;
+    console.log("[ClientController] Count query:", countQuery);
 
-    if (search) {
-      countQuery += ` AND (CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)`;
-      const searchTerm = `%${search}%`;
-      countParams.push(searchTerm, searchTerm, searchTerm);
-    }
-
-    if (status && ["active", "inactive", "blacklisted"].includes(status)) {
-      countQuery += ` AND c.status = ?`;
-      countParams.push(status);
-    }
-
-    const [countResult] = await pool.query(countQuery, countParams);
+    const [countResult] = await pool.execute(countQuery, queryParams);
     const total = countResult[0].total;
 
-    res.status(200).json({
+    console.log("[ClientController] Total clients found:", total);
+
+    // Get clients with pagination
+    const selectQuery = `
+      SELECT id, first_name, last_name, email, phone, address, city, state, 
+             postal_code, country, status, created_at, updated_at
+      FROM clients 
+      ${whereClause}
+      ORDER BY created_at DESC 
+      LIMIT ? OFFSET ?
+    `;
+
+    const selectParams = [...queryParams, limit, offset];
+    console.log("[ClientController] Select query:", selectQuery);
+    console.log("[ClientController] Select params:", selectParams);
+
+    const [clients] = await pool.execute(selectQuery, selectParams);
+
+    console.log("[ClientController] Clients retrieved:", clients.length);
+
+    const totalPages = Math.ceil(total / limit);
+
+    const response = {
       success: true,
       data: {
-        clients,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
+        clients: clients,
+        total: total,
+        page: page,
+        limit: limit,
+        totalPages: totalPages,
       },
+    };
+
+    console.log("[ClientController] Sending response:", {
+      success: response.success,
+      clientCount: response.data.clients.length,
+      total: response.data.total,
+      page: response.data.page,
     });
+
+    res.json(response);
   } catch (error) {
-    console.error("Error fetching clients:", error);
+    console.error("[ClientController] Error in getClients:", error);
+    console.error("[ClientController] Error stack:", error.stack);
+
     res.status(500).json({
       success: false,
-      message: "Failed to fetch clients",
+      message: "Failed to retrieve clients",
       error: error.message,
     });
   }
@@ -308,24 +324,33 @@ exports.deleteClient = async (req, res) => {
 // Get client statistics
 exports.getClientStats = async (req, res) => {
   try {
-    const [stats] = await pool.query(`
-      SELECT 
-        COUNT(*) as total_clients,
-        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_clients,
-        SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) as inactive_clients,
-        SUM(CASE WHEN status = 'blacklisted' THEN 1 ELSE 0 END) as blacklisted_clients
+    const [rows] = await pool.execute(`
+      SELECT
+        COUNT(*) AS total_clients,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_clients,
+        SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) AS inactive_clients,
+        SUM(CASE WHEN status = 'blacklisted' THEN 1 ELSE 0 END) AS blacklisted_clients
       FROM clients
     `);
 
-    res.status(200).json({
+    // The query returns an array with one object.
+    // Ensure all values are numbers, defaulting to 0 if null (e.g., if no clients in a category)
+    const stats = {
+      total_clients: Number(rows[0].total_clients || 0),
+      active_clients: Number(rows[0].active_clients || 0),
+      inactive_clients: Number(rows[0].inactive_clients || 0),
+      blacklisted_clients: Number(rows[0].blacklisted_clients || 0),
+    };
+
+    res.json({
       success: true,
-      data: stats[0],
+      data: stats, // Ensure 'stats' object is directly under 'data'
     });
   } catch (error) {
-    console.error("Error fetching client stats:", error);
+    console.error("[ClientController] Error in getClientStats:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch client statistics",
+      message: "Failed to retrieve client statistics.",
       error: error.message,
     });
   }

@@ -1,19 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type {
-  Client,
-  ClientFilters,
-  ClientFormData,
-  ClientDetailsData,
-} from "../../types/client"; // Added ClientDetailsData
-import {
-  getClients,
-  createClient,
-  updateClient,
-  deleteClient,
-  getClientDetailsById, // Added getClientDetailsById
-} from "../../services/clientService";
-import ClientForm from "../forms/ClientForm";
 import {
   FiSearch,
   FiPlus,
@@ -50,6 +36,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  getClients,
+  deleteClient,
+  createClient,
+  updateClient,
+  getClientStats, // Add this import
+  Client,
+  ClientFormData,
+  ClientFilters,
+  ClientStats, // Import the ClientStats type
+} from "../../services/clientService";
+import ClientForm from "../forms/ClientForm";
 
 // Add extended interface for editing client with ID
 interface ClientFormDataWithId extends ClientFormData {
@@ -640,14 +638,18 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
 };
 
 const Clients: React.FC = () => {
-  // State for clients data and pagination
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalClients, setTotalClients] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-
-  // State for filtering and pagination
+  const [clientStats, setClientStats] = useState<ClientStats>({
+    // Use the imported ClientStats type
+    total: 0,
+    active: 0,
+    inactive: 0,
+    blacklisted: 0,
+  });
   const [filters, setFilters] = useState<ClientFilters>({
     page: 1,
     limit: 10,
@@ -679,22 +681,78 @@ const Clients: React.FC = () => {
 
   // Fetch clients on component mount and when filters change
   useEffect(() => {
-    fetchClients();
+    fetchClientsAndStats();
   }, [filters]);
 
   // Function to fetch clients from API
-  const fetchClients = async () => {
+  const fetchClientsAndStats = async () => {
     setLoading(true);
     setError(null);
-
     try {
-      const response = await getClients(filters);
-      setClients(response.data.clients);
-      setTotalClients(response.data.pagination.total);
-      setTotalPages(response.data.pagination.totalPages);
-    } catch (err) {
-      setError("Failed to fetch clients. Please try again later.");
-      console.error("Error fetching clients:", err);
+      // Fetch clients
+      const clientsApiResponse = await getClients(filters);
+      console.log(
+        "[Clients.tsx] Raw clientsApiResponse from getClients service:",
+        JSON.stringify(clientsApiResponse, null, 2)
+      );
+      if (
+        clientsApiResponse &&
+        clientsApiResponse.success &&
+        clientsApiResponse.data
+      ) {
+        setClients(clientsApiResponse.data.clients);
+        setTotalClients(clientsApiResponse.data.total);
+        setTotalPages(clientsApiResponse.data.totalPages);
+      } else {
+        const clientsErrorMsg =
+          clientsApiResponse?.message || "Failed to process client list data.";
+        console.error(
+          "[Clients.tsx] Error fetching clients list:",
+          clientsErrorMsg,
+          "Full response:",
+          JSON.stringify(clientsApiResponse, null, 2)
+        );
+        setError(clientsErrorMsg);
+        setClients([]);
+        setTotalClients(0);
+        setTotalPages(0);
+      }
+
+      // Fetch client stats
+      const statsApiResponse = await getClientStats();
+      console.log(
+        "[Clients.tsx] Raw statsApiResponse from getClientStats service:",
+        JSON.stringify(statsApiResponse, null, 2)
+      );
+      if (
+        statsApiResponse &&
+        statsApiResponse.success &&
+        statsApiResponse.data
+      ) {
+        setClientStats(statsApiResponse.data); // Directly set the data if it matches ClientStats
+      } else {
+        const statsErrorMsg =
+          statsApiResponse?.message || "Failed to process client statistics.";
+        console.error(
+          "[Clients.tsx] Error fetching client stats:",
+          statsErrorMsg,
+          "Full response:",
+          JSON.stringify(statsApiResponse, null, 2)
+        );
+        // Optionally set error for stats or use default/fallback stats
+        // For now, we'll just log the error and keep existing/default stats
+      }
+    } catch (err: any) {
+      console.error(
+        "[Clients.tsx] Exception in fetchClientsAndStats:",
+        err.message,
+        err.stack
+      );
+      setError(err.message || "An unexpected error occurred.");
+      setClients([]);
+      setTotalClients(0);
+      setTotalPages(0);
+      setClientStats({ total: 0, active: 0, inactive: 0, blacklisted: 0 }); // Reset stats on major error
     } finally {
       setLoading(false);
     }
@@ -759,7 +817,7 @@ const Clients: React.FC = () => {
       }
 
       // Refresh client list
-      fetchClients();
+      fetchClientsAndStats();
       setShowClientForm(false);
     } catch (err) {
       console.error("Error saving client:", err);
@@ -781,7 +839,7 @@ const Clients: React.FC = () => {
 
     try {
       await deleteClient(clientToDelete);
-      fetchClients();
+      fetchClientsAndStats();
     } catch (err) {
       console.error("Error deleting client:", err);
       // Error handling would be implemented here
@@ -944,84 +1002,54 @@ const Clients: React.FC = () => {
   };
 
   return (
-    <div className="p-6 space-y-8 animate-fade-in">
-      {/* Enhanced Header with gradient background */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 p-6 animate-slide-down">
-        <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:16px_16px]"></div>
-        <div className="relative flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
-                <FiUsers className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                  Client Management
-                </h1>
-                <p className="text-muted-foreground text-lg">
-                  Manage and track all your clients in one centralized platform
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="lg"
-              className="hover-lift border-primary/20 hover:border-primary/40 hover:bg-primary/5"
-            >
-              <FiDownload className="mr-2 h-4 w-4" />
-              Export
-            </Button>
-            <Button
-              onClick={handleAddClient}
-              size="lg"
-              className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg shadow-primary/25 hover-lift pulse-glow"
-            >
-              <FiPlus className="mr-2 h-5 w-5" />
-              Add New Client
-            </Button>
-          </div>
+    <div className="p-6 space-y-6 animate-fade-in">
+      <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+        <h1 className="text-3xl font-bold">Client Management</h1>
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={handleAddClient}
+            className="bg-primary text-white rounded-md shadow-md hover:bg-primary/90 transition-all duration-200 flex items-center gap-2"
+          >
+            <FiPlus className="w-5 h-5" />
+            Add New Client
+          </Button>
+          <Button
+            variant="outline"
+            className="border-primary text-primary rounded-md shadow-md hover:bg-primary/10 transition-all duration-200 flex items-center gap-2"
+          >
+            <FiDownload className="w-5 h-5" />
+            Export Clients
+          </Button>
         </div>
       </div>
 
-      {/* Enhanced Stats Cards Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
-        <div className="stagger-item">
-          <StatsCard
-            title="Total Clients"
-            value={totalClients}
-            icon={<FiUsers className="h-5 w-5" />}
-            variant="default"
-          />
-        </div>
-        <div className="stagger-item">
-          <StatsCard
-            title="Active Clients"
-            value={activeClients}
-            icon={<FiUserCheck className="h-5 w-5" />}
-            variant="success"
-          />
-        </div>
-        <div className="stagger-item">
-          <StatsCard
-            title="Inactive Clients"
-            value={inactiveClients}
-            icon={<FiUserX className="h-5 w-5" />}
-            variant="warning"
-          />
-        </div>
-        <div className="stagger-item">
-          <StatsCard
-            title="Blacklisted"
-            value={blacklistedClients}
-            icon={<FiUserMinus className="h-5 w-5" />}
-            variant="danger"
-          />
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <StatsCard
+          title="Total Clients"
+          value={clientStats.total.toLocaleString()} // clientStats should now be correctly typed and in scope
+          icon={<FiUsers className="w-6 h-6" />}
+          color="blue"
+        />
+        <StatsCard
+          title="Active Clients"
+          value={clientStats.active.toLocaleString()} // clientStats should now be correctly typed and in scope
+          icon={<FiUserCheck className="w-6 h-6" />}
+          color="green"
+        />
+        <StatsCard
+          title="Inactive Clients"
+          value={clientStats.inactive.toLocaleString()} // clientStats should now be correctly typed and in scope
+          icon={<FiUserX className="w-6 h-6" />}
+          color="yellow"
+        />
+        <StatsCard
+          title="Blacklisted"
+          value={clientStats.blacklisted.toLocaleString()} // clientStats should now be correctly typed and in scope
+          icon={<FiUserMinus className="w-6 h-6" />}
+          color="red"
+        />
       </div>
 
-      {/* Enhanced Search and Filters */}
       <Card className="hover-lift animate-scale-in border-border/50 bg-card">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
@@ -1064,11 +1092,20 @@ const Clients: React.FC = () => {
 
       {/* Error message */}
       {error && (
-        <Card className="border-destructive animate-bounce-in">
-          <CardContent className="p-4">
-            <p className="text-destructive">{error}</p>
-          </CardContent>
-        </Card>
+        <div
+          className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md shadow-md"
+          role="alert"
+        >
+          <div className="flex">
+            <div className="py-1">
+              <FiAlertTriangle className="h-6 w-6 text-red-500 mr-3" />
+            </div>
+            <div>
+              <p className="font-bold">Error</p>
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Enhanced Content */}
