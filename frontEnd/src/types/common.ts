@@ -1,21 +1,15 @@
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T> {
   success: boolean;
-  data?: T;
+  data: T;
   message?: string;
-  error?: string;
 }
 
 export interface PaginatedResponse<T> {
-  items?: T[];
-  loans?: T[];
-  clients?: T[];
-  payments?: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+  items: T[];
+  total: number;
+  totalPages: number;
+  currentPage: number;
+  limit: number;
 }
 
 export interface User {

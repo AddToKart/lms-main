@@ -597,9 +597,14 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Fetch dashboard data
+  // Fetch dashboard data with cleanup
   useEffect(() => {
+    let isMounted = true;
+    const abortController = new AbortController();
+
     const fetchDashboardData = async () => {
+      if (!isMounted) return;
+
       try {
         setLoading(true);
 
@@ -616,6 +621,10 @@ const Dashboard: React.FC = () => {
           "Content-Type": "application/json",
         };
 
+        // Add signal to all fetch requests for cleanup
+        const fetchWithSignal = (url: string, options: any = {}) =>
+          fetch(url, { ...options, signal: abortController.signal });
+
         // Initialize with safe default values
         let analytics = {
           total_active_loans: 0,
@@ -630,10 +639,13 @@ const Dashboard: React.FC = () => {
         let monthlyPayments = [];
         let loanStatusDistribution = [];
 
+        // Only proceed if component is still mounted
+        if (!isMounted) return;
+
         // Try to fetch analytics with error handling
         try {
-          const analyticsResponse = await fetch(
-            `${API_URL}/api/reports/analytics`,
+          const analyticsResponse = await fetchWithSignal(
+            `${API_URL}/api/reports/loan-analytics`,
             { headers }
           );
           if (analyticsResponse.ok) {
@@ -660,12 +672,19 @@ const Dashboard: React.FC = () => {
               : [];
           }
         } catch (error) {
-          console.warn("Analytics endpoint not available, using fallback data");
+          if (error.name !== "AbortError") {
+            console.warn(
+              "Analytics endpoint not available, using fallback data"
+            );
+          }
         }
+
+        // Check if still mounted before continuing
+        if (!isMounted) return;
 
         // Try to fetch loan analytics
         try {
-          const loanAnalyticsResponse = await fetch(
+          const loanAnalyticsResponse = await fetchWithSignal(
             `${API_URL}/api/reports/loan-analytics`,
             { headers }
           );
@@ -687,9 +706,12 @@ const Dashboard: React.FC = () => {
           );
         }
 
+        // Check if still mounted before continuing
+        if (!isMounted) return;
+
         // Try to fetch payment history
         try {
-          const monthlyResponse = await fetch(
+          const monthlyResponse = await fetchWithSignal(
             `${API_URL}/api/reports/payment-history?date_from=${getDateXMonthsAgo(
               6
             )}&date_to=${getCurrentDate()}`,
@@ -779,15 +801,25 @@ const Dashboard: React.FC = () => {
         await fetchRecentActivities(API_URL, headers);
         await fetchUpcomingPayments(API_URL, headers);
       } catch (err: any) {
-        console.error("Error fetching dashboard data:", err);
-        setError(err.message || "Failed to fetch dashboard data");
+        if (err.name !== "AbortError" && isMounted) {
+          console.error("Error fetching dashboard data:", err);
+          setError(err.message || "Failed to fetch dashboard data");
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchDashboardData();
-  }, []);
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, []); // Remove dependencies to prevent unnecessary re-fetches
 
   // Show loading state
   if (loading) {

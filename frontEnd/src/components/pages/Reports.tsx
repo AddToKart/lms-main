@@ -8,7 +8,7 @@ import {
   FiTrendingUp,
   FiFilter,
   FiRefreshCw,
-  FiCreditCard, // Added for consistency if used in analytics
+  FiCreditCard,
 } from "react-icons/fi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,16 +33,13 @@ import {
   getPaymentHistoryReport,
   getOverdueLoansReport,
   getLoanAnalytics,
-  exportReport, // Ensure this service function is correctly implemented for blob handling
+  exportReport,
   LoanSummaryData,
   PaymentHistoryData,
   OverdueLoanData,
   LoanAnalytics,
 } from "../../services/reportService";
-import { ApiResponse } from "../../services/api"; // Assuming ApiResponse is exported from api.ts
-
-// API URL from environment variable or default to localhost
-// const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000"; // Not directly used if all API calls go through services
+import { ApiResponse } from "../../services/api";
 
 type ReportType = "loanSummary" | "paymentHistory" | "overdueLoans";
 
@@ -74,12 +71,14 @@ const formatDate = (dateString: string | Date | undefined) => {
 const Reports: React.FC = () => {
   const [selectedReport, setSelectedReport] =
     useState<ReportType>("loanSummary");
+
   const [dateRange, setDateRange] = useState({
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
       .split("T")[0],
     to: new Date().toISOString().split("T")[0],
   });
+
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -96,122 +95,159 @@ const Reports: React.FC = () => {
   );
 
   // Simple toast function
-  const showToast = (
-    message: string,
-    type: "success" | "error" = "success"
-  ) => {
-    const toast = document.createElement("div");
-    toast.className = `fixed top-4 right-4 z-[1000] px-4 py-2 rounded-md shadow-lg text-white font-medium ${
-      type === "success" ? "bg-green-500" : "bg-red-500"
-    }`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      if (document.body.contains(toast)) {
-        document.body.removeChild(toast);
-      }
-    }, 3000);
-  };
+  const showToast = useCallback(
+    (message: string, type: "success" | "error" = "success") => {
+      const toast = document.createElement("div");
+      toast.className = `fixed top-4 right-4 z-[1000] px-4 py-2 rounded-md shadow-lg text-white font-medium ${
+        type === "success" ? "bg-green-500" : "bg-red-500"
+      }`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        if (document.body.contains(toast)) {
+          document.body.removeChild(toast);
+        }
+      }, 3000);
+    },
+    []
+  );
 
-  const loadReportData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      let response: ApiResponse<any> | Response; // Adjusted for exportReport potential raw Response
-      switch (selectedReport) {
-        case "loanSummary":
-          response = await getLoanSummaryReport(dateRange.from, dateRange.to);
-          if (!(response instanceof Response) && response.success) {
-            setLoanSummaryData(response.data);
-          } else if (response instanceof Response) {
-            console.error(
-              "Expected ApiResponse for loan summary, got raw Response"
+  const loadReportData = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoading(true);
+      try {
+        console.log(`Loading ${selectedReport} data...`);
+
+        let response: ApiResponse<any>;
+        switch (selectedReport) {
+          case "loanSummary":
+            response = await getLoanSummaryReport(
+              dateRange.from,
+              dateRange.to,
+              signal
             );
-            showToast(
-              "Error: Unexpected response format for loan summary.",
-              "error"
+            if (response.success) {
+              setLoanSummaryData(
+                Array.isArray(response.data) ? response.data : []
+              );
+              console.log("Loan summary data loaded:", response.data);
+            } else {
+              console.error("Loan summary failed:", response.message);
+              showToast(
+                response.message || "Failed to load loan summary.",
+                "error"
+              );
+            }
+            break;
+
+          case "paymentHistory":
+            response = await getPaymentHistoryReport(
+              dateRange.from,
+              dateRange.to,
+              signal
             );
-          } else if (!(response instanceof Response) && !response.success) {
-            showToast(
-              response.message || "Failed to load loan summary.",
-              "error"
-            );
-          }
-          break;
-        case "paymentHistory":
-          response = await getPaymentHistoryReport(
-            dateRange.from,
-            dateRange.to
+            if (response.success) {
+              setPaymentHistoryData(
+                Array.isArray(response.data) ? response.data : []
+              );
+              console.log("Payment history data loaded:", response.data);
+            } else {
+              console.error("Payment history failed:", response.message);
+              showToast(
+                response.message || "Failed to load payment history.",
+                "error"
+              );
+            }
+            break;
+
+          case "overdueLoans":
+            response = await getOverdueLoansReport(signal);
+            if (response.success) {
+              setOverdueLoansData(
+                Array.isArray(response.data) ? response.data : []
+              );
+              console.log("Overdue loans data loaded:", response.data);
+            } else {
+              console.error("Overdue loans failed:", response.message);
+              showToast(
+                response.message || "Failed to load overdue loans.",
+                "error"
+              );
+            }
+            break;
+        }
+      } catch (error: any) {
+        if (error.name === "AbortError") {
+          console.log(
+            `Request for '${selectedReport}' report data was cancelled`
           );
-          if (!(response instanceof Response) && response.success) {
-            setPaymentHistoryData(response.data);
-          } else if (response instanceof Response) {
-            console.error(
-              "Expected ApiResponse for payment history, got raw Response"
-            );
-            showToast(
-              "Error: Unexpected response format for payment history.",
-              "error"
-            );
-          } else if (!(response instanceof Response) && !response.success) {
-            showToast(
-              response.message || "Failed to load payment history.",
-              "error"
-            );
-          }
-          break;
-        case "overdueLoans":
-          response = await getOverdueLoansReport();
-          if (!(response instanceof Response) && response.success) {
-            setOverdueLoansData(response.data);
-          } else if (response instanceof Response) {
-            console.error(
-              "Expected ApiResponse for overdue loans, got raw Response"
-            );
-            showToast(
-              "Error: Unexpected response format for overdue loans.",
-              "error"
-            );
-          } else if (!(response instanceof Response) && !response.success) {
-            showToast(
-              response.message || "Failed to load overdue loans.",
-              "error"
-            );
-          }
-          break;
+        } else {
+          console.error("Error loading report data:", error);
+          showToast(error.message || "Failed to load report data.", "error");
+        }
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error: any) {
-      console.error("Error loading report data:", error);
-      showToast(error.message || "Failed to load report data.", "error");
-    } finally {
-      setIsLoading(false);
-    }
+    },
+    [selectedReport, dateRange.from, dateRange.to, showToast]
+  );
+
+  const loadLoanAnalytics = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        console.log("Loading loan analytics...");
+        const response = await getLoanAnalytics(
+          dateRange.from,
+          dateRange.to,
+          signal
+        );
+        if (response.success) {
+          setLoanAnalytics(response.data);
+          console.log("Loan analytics loaded:", response.data);
+        } else {
+          console.error("Loan analytics failed:", response.message);
+          showToast(
+            response.message || "Failed to load loan analytics.",
+            "error"
+          );
+        }
+      } catch (error: any) {
+        if (error.name === "AbortError") {
+          console.log("Loan analytics request was cancelled");
+        } else {
+          console.error("Error loading loan analytics:", error);
+          showToast(error.message || "Failed to load loan analytics.", "error");
+        }
+      }
+    },
+    [dateRange.from, dateRange.to, showToast]
+  );
+
+  // Load report data when dependencies change
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      loadReportData(controller.signal);
+    }, 300); // Debounce API calls
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [selectedReport, dateRange.from, dateRange.to]);
 
-  const loadLoanAnalytics = useCallback(async () => {
-    // Separate loading for analytics as it's not date-range dependent
-    setIsLoading(true); // Can use a separate loading state if preferred
-    try {
-      const response = await getLoanAnalytics();
-      if (response.success) {
-        setLoanAnalytics(response.data);
-      } else {
-        showToast(
-          response.message || "Failed to load loan analytics.",
-          "error"
-        );
-      }
-    } catch (error: any) {
-      console.error("Error loading loan analytics:", error);
-      showToast(error.message || "Failed to load loan analytics.", "error");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
+  // Load analytics separately with debouncing
   useEffect(() => {
-    loadLoanAnalytics();
-    loadReportData();
-  }, [loadReportData, loadLoanAnalytics]);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      loadLoanAnalytics(controller.signal);
+    }, 300);
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [dateRange.from, dateRange.to]);
 
   const handleExport = async (format: "excel" | "json" | "csv") => {
     if (!selectedReport) return;
@@ -225,6 +261,15 @@ const Reports: React.FC = () => {
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // Handle input changes without excessive re-renders
+  const handleReportTypeChange = (value: ReportType) => {
+    setSelectedReport(value);
+  };
+
+  const handleDateChange = (field: "from" | "to", value: string) => {
+    setDateRange((prev) => ({ ...prev, [field]: value }));
   };
 
   const renderReportContent = () => {
@@ -420,23 +465,6 @@ const Reports: React.FC = () => {
     }
   };
 
-  const handleDateChange = (
-    field: "from" | "to",
-    value: string,
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    event.stopPropagation();
-    setDateRange((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleDateClick = (event: React.MouseEvent<HTMLInputElement>) => {
-    event.stopPropagation();
-  };
-
-  const handleDateBlur = (event: React.FocusEvent<HTMLInputElement>) => {
-    event.target.blur();
-  };
-
   return (
     <div className="p-6 space-y-6 bg-background min-h-screen">
       <header className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
@@ -447,8 +475,10 @@ const Reports: React.FC = () => {
           <Button
             variant="outline"
             onClick={() => {
-              loadLoanAnalytics();
-              loadReportData();
+              // Manual refresh without cancelling ongoing requests
+              const controller = new AbortController();
+              loadLoanAnalytics(controller.signal);
+              loadReportData(controller.signal);
             }}
             disabled={isLoading}
           >
@@ -488,16 +518,16 @@ const Reports: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Total Loan Value
+              Total Outstanding
             </CardTitle>
             <FiDollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(loanAnalytics?.total_loan_value)}
+              {formatCurrency(loanAnalytics?.total_outstanding || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
-              Across all active loans
+              Total outstanding balance
             </p>
           </CardContent>
         </Card>
@@ -508,7 +538,7 @@ const Reports: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loanAnalytics?.active_loans_count || 0}
+              {loanAnalytics?.total_active_loans || 0}
             </div>
             <p className="text-xs text-muted-foreground">
               Currently active loans
@@ -518,34 +548,29 @@ const Reports: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Average Interest Rate
+              Monthly Collections
             </CardTitle>
             <FiTrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {parseFloat(
-                String(loanAnalytics?.avg_interest_rate || 0)
-              ).toFixed(2)}
-              %
+              {formatCurrency(loanAnalytics?.monthly_collections || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
-              Average across active loans
+              This month's collections
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overdue Loans</CardTitle>
+            <CardTitle className="text-sm font-medium">Average Loan</CardTitle>
             <FiAlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loanAnalytics?.overdue_loans_count || 0}
+              {formatCurrency(loanAnalytics?.average_loan_amount || 0)}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Loans currently past due
-            </p>
+            <p className="text-xs text-muted-foreground">Average loan amount</p>
           </CardContent>
         </Card>
       </section>
@@ -568,7 +593,7 @@ const Reports: React.FC = () => {
             </label>
             <Select
               value={selectedReport}
-              onValueChange={(value) => setSelectedReport(value as ReportType)}
+              onValueChange={handleReportTypeChange}
             >
               <SelectTrigger id="reportType">
                 <SelectValue placeholder="Select report type" />
@@ -595,7 +620,7 @@ const Reports: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="relative">
+          <div>
             <label
               htmlFor="dateFrom"
               className="block text-sm font-medium text-muted-foreground mb-1"
@@ -606,14 +631,11 @@ const Reports: React.FC = () => {
               id="dateFrom"
               type="date"
               value={dateRange.from}
-              onChange={(e) => handleDateChange("from", e.target.value, e)}
-              onClick={handleDateClick}
-              onBlur={handleDateBlur}
+              onChange={(e) => handleDateChange("from", e.target.value)}
               className="w-full"
-              autoComplete="off"
             />
           </div>
-          <div className="relative">
+          <div>
             <label
               htmlFor="dateTo"
               className="block text-sm font-medium text-muted-foreground mb-1"
@@ -624,11 +646,8 @@ const Reports: React.FC = () => {
               id="dateTo"
               type="date"
               value={dateRange.to}
-              onChange={(e) => handleDateChange("to", e.target.value, e)}
-              onClick={handleDateClick}
-              onBlur={handleDateBlur}
+              onChange={(e) => handleDateChange("to", e.target.value)}
               className="w-full"
-              autoComplete="off"
             />
           </div>
         </CardContent>

@@ -1,5 +1,6 @@
 import { apiRequest } from "./api";
-import type { ApiResponse, PaginatedResponse } from "../types/common";
+import type { ApiResponse } from "./api";
+import type { PaginatedResponse } from "../types/common";
 
 export interface Loan {
   id: number;
@@ -80,9 +81,11 @@ export const getLoans = async (
     if (filters.sort_by) params.append("sort_by", filters.sort_by);
     if (filters.sort_order) params.append("sort_order", filters.sort_order);
 
-    const response = await apiRequest<PaginatedResponse<Loan>>(`/api/loans?${params.toString()}`);
+    const response = await apiRequest<PaginatedResponse<Loan>>(
+      `/api/loans?${params.toString()}`
+    );
     if (response instanceof Response) {
-      throw new Error('Expected ApiResponse, got raw Response for getLoans');
+      throw new Error("Expected ApiResponse, got raw Response for getLoans");
     }
     return response;
   } catch (error) {
@@ -123,10 +126,12 @@ export const getActiveLoans = async (): Promise<ApiResponse<Loan[]>> => {
   }
 };
 
-export const getLoanById = async (loanId: number): Promise<ApiResponse<Loan>> => {
+export const getLoanById = async (
+  loanId: number
+): Promise<ApiResponse<Loan>> => {
   try {
     // Assuming your API endpoint for a single loan is /api/loans/:id
-    const response = await fetch(`${API_URL}/api/loans/${loanId}`, { 
+    const response = await fetch(`${API_URL}/api/loans/${loanId}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -136,15 +141,25 @@ export const getLoanById = async (loanId: number): Promise<ApiResponse<Loan>> =>
     if (!response.ok) {
       // Attempt to parse error message from backend if available
       const errorData = await response.json().catch(() => null);
-      throw new Error(errorData?.message || `HTTP error! status: ${response.status}`);
+      throw new Error(
+        errorData?.message || `HTTP error! status: ${response.status}`
+      );
     }
     const data = await response.json();
     // The backend might return the loan directly or nested under a 'data' key
     // Adjust based on your actual API response structure
-    return { success: true, data: data.data || data, message: "Loan fetched successfully" };
+    return {
+      success: true,
+      data: data.data || data,
+      message: "Loan fetched successfully",
+    };
   } catch (error: any) {
     console.error(`Error fetching loan by ID ${loanId}:`, error);
-    return { success: false, data: null, message: error.message || "Failed to fetch loan." };
+    return {
+      success: false,
+      data: null,
+      message: error.message || "Failed to fetch loan.",
+    };
   }
 };
 
@@ -157,7 +172,7 @@ export const createLoan = async (
       body: JSON.stringify(data),
     });
     if (response instanceof Response) {
-      throw new Error('Expected ApiResponse, got raw Response for createLoan');
+      throw new Error("Expected ApiResponse, got raw Response for createLoan");
     }
     return response;
   } catch (error) {
@@ -176,7 +191,7 @@ export const updateLoan = async (
       body: JSON.stringify(data),
     });
     if (response instanceof Response) {
-      throw new Error('Expected ApiResponse, got raw Response for updateLoan');
+      throw new Error("Expected ApiResponse, got raw Response for updateLoan");
     }
     return response;
   } catch (error) {
@@ -191,7 +206,7 @@ export const deleteLoan = async (id: number): Promise<ApiResponse<void>> => {
       method: "DELETE",
     });
     if (response instanceof Response) {
-      throw new Error('Expected ApiResponse, got raw Response for deleteLoan');
+      throw new Error("Expected ApiResponse, got raw Response for deleteLoan");
     }
     return response;
   } catch (error) {
@@ -214,7 +229,7 @@ export const approveLoan = async (
       body: JSON.stringify(data),
     });
     if (response instanceof Response) {
-      throw new Error('Expected ApiResponse, got raw Response for approveLoan');
+      throw new Error("Expected ApiResponse, got raw Response for approveLoan");
     }
     return response;
   } catch (error) {
@@ -223,45 +238,37 @@ export const approveLoan = async (
   }
 };
 
+export const rejectLoan = async (
+  id: number,
+  rejectionReason?: string
+): Promise<ApiResponse<Loan>> => {
+  try {
+    const response = await apiRequest<Loan>(`/api/loans/${id}/reject`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: rejectionReason || "" }),
+    });
+    if (response instanceof Response) {
+      throw new Error("Expected ApiResponse, got raw Response for rejectLoan");
+    }
+    return response;
+  } catch (error) {
+    console.error("Error rejecting loan:", error);
+    throw error;
+  }
+};
+
 export const getClientsWithLoans = async (): Promise<ApiResponse<Client[]>> => {
   try {
-    // TODO: Replace with the actual backend endpoint
-    // This assumes your backend will have an endpoint like '/api/clients/with-active-loans'
-    // or similar, which returns an array of Client objects.
-    console.log("Making request to:", `${API_URL}/api/clients/with-active-loans`); // Debug log
-
-    const response = await fetch(`${API_URL}/api/clients/with-active-loans`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    });
-
-    console.log("Response status (getClientsWithLoans):", response.status); // Debug log
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("API Error (getClientsWithLoans):", errorData); // Debug log
+    const response = await apiRequest<Client[]>("/api/clients?has_loans=true");
+    if (response instanceof Response) {
       throw new Error(
-        errorData.message || `HTTP error! status: ${response.status}`
+        "Expected ApiResponse, got raw Response for getClientsWithLoans"
       );
     }
-
-    const data = await response.json();
-    console.log("Clients with active loans response data:", data); // Debug log
-
-    // Assuming the backend returns { success: boolean, data: Client[] }
-    // or just Client[] directly. Adjust based on your actual API response.
-    return data.success ? data : { success: true, data: data, message: "" }; 
+    return response;
   } catch (error) {
-    console.error("Error fetching clients with active loans:", error);
-    // Return a failed ApiResponse structure
-    return { 
-      success: false, 
-      message: error instanceof Error ? error.message : "Unknown error fetching clients", 
-      data: [] 
-    };
+    console.error("Error fetching clients with loans:", error);
+    throw error;
   }
 };
 
@@ -269,7 +276,9 @@ export const getLoanStats = async (): Promise<ApiResponse<LoanStats>> => {
   try {
     const response = await apiRequest<LoanStats>("/api/loans/stats");
     if (response instanceof Response) {
-      throw new Error('Expected ApiResponse, got raw Response for getLoanStats');
+      throw new Error(
+        "Expected ApiResponse, got raw Response for getLoanStats"
+      );
     }
     return response;
   } catch (error) {

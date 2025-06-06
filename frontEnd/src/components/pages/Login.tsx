@@ -185,7 +185,11 @@ const Login = () => {
                   <div className="bg-red-500/20 backdrop-blur-sm border border-red-500/30 rounded-xl p-4 mb-6">
                     <div className="flex items-center">
                       <FiAlertCircle className="h-5 w-5 text-red-400 mr-3" />
-                      <p className="text-red-200 text-sm">{error}</p>
+                      <span className="text-red-200 text-sm">
+                        {error.includes("Rate limit")
+                          ? "Too many login attempts. Please wait a moment before trying again."
+                          : error}
+                      </span>
                     </div>
                   </div>
                 )}

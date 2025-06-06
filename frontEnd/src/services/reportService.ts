@@ -1,11 +1,14 @@
-import { apiRequest, ApiResponse } from "./api";
+import { apiRequest } from "./api";
+import type { ApiResponse } from "./api";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// Data type interfaces
 export interface LoanSummaryData {
   month: string;
   new_loans: number;
   total_amount: number;
   avg_interest: number;
-  approved_amount: number;
   approved_count: number;
   rejected_count: number;
   total_principal_repaid: number;
@@ -28,161 +31,199 @@ export interface OverdueLoanData {
   client_name: string;
   phone: string;
   email: string;
-  loan_amount: number;
-  amount_due: number;
-  next_due_date: string;
   days_overdue: number;
-  interest_rate: number;
-  overdue_severity: string;
+  amount_due: number;
+  loan_amount: number;
+  overdue_severity: "Mild" | "Moderate" | "Severe";
 }
 
 export interface LoanAnalytics {
   total_active_loans: number;
+  total_outstanding: number;
+  monthly_collections: number;
+  average_loan_amount: number;
 }
 
-// Get loan summary report
+// Service functions
 export const getLoanSummaryReport = async (
-  dateFrom?: string,
-  dateTo?: string
+  dateFrom: string,
+  dateTo: string,
+  signal?: AbortSignal
 ): Promise<ApiResponse<LoanSummaryData[]>> => {
   try {
-    const params = new URLSearchParams();
-    if (dateFrom) params.append("date_from", dateFrom);
-    if (dateTo) params.append("date_to", dateTo);
+    const params = new URLSearchParams({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
 
-    const queryString = params.toString();
-    const url = queryString
-      ? `/api/reports/loan-summary?${queryString}`
-      : "/api/reports/loan-summary";
+    const response = await apiRequest<LoanSummaryData[]>(
+      `/api/reports/loan-summary?${params.toString()}`,
+      { signal }
+    );
 
-    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
-    return (await apiRequest<LoanSummaryData[]>(url)) as ApiResponse<
-      LoanSummaryData[]
-    >;
-  } catch (error) {
-    console.error("Error fetching loan summary report:", error);
+    if (response instanceof Response) {
+      throw new Error(
+        "Expected ApiResponse, got raw Response for getLoanSummaryReport"
+      );
+    }
+
+    return response;
+  } catch (error: any) {
+    if (error.name === "AbortError") {
+      console.log("Loan summary report request was cancelled");
+    } else {
+      console.error("Error fetching loan summary report:", error);
+    }
     throw error;
   }
 };
 
-// Get payment history report
 export const getPaymentHistoryReport = async (
-  dateFrom?: string,
-  dateTo?: string
+  dateFrom: string,
+  dateTo: string,
+  signal?: AbortSignal
 ): Promise<ApiResponse<PaymentHistoryData[]>> => {
   try {
-    const params = new URLSearchParams();
-    if (dateFrom) params.append("date_from", dateFrom);
-    if (dateTo) params.append("date_to", dateTo);
+    const params = new URLSearchParams({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
 
-    const queryString = params.toString();
-    const url = queryString
-      ? `/api/reports/payment-history?${queryString}`
-      : "/api/reports/payment-history";
+    const response = await apiRequest<PaymentHistoryData[]>(
+      `/api/reports/payment-history?${params.toString()}`,
+      { signal }
+    );
 
-    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
-    return (await apiRequest<PaymentHistoryData[]>(url)) as ApiResponse<
-      PaymentHistoryData[]
-    >;
-  } catch (error) {
-    console.error("Error fetching payment history report:", error);
+    if (response instanceof Response) {
+      throw new Error(
+        "Expected ApiResponse, got raw Response for getPaymentHistoryReport"
+      );
+    }
+
+    return response;
+  } catch (error: any) {
+    if (error.name === "AbortError") {
+      console.log("Payment history report request was cancelled");
+    } else {
+      console.error("Error fetching payment history report:", error);
+    }
     throw error;
   }
 };
 
-// Get overdue loans report
-export const getOverdueLoansReport = async (): Promise<
-  ApiResponse<OverdueLoanData[]>
-> => {
+export const getOverdueLoansReport = async (
+  signal?: AbortSignal
+): Promise<ApiResponse<OverdueLoanData[]>> => {
   try {
-    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
-    return (await apiRequest<OverdueLoanData[]>(
-      "/api/reports/overdue-loans"
-    )) as ApiResponse<OverdueLoanData[]>;
-  } catch (error) {
-    console.error("Error fetching overdue loans report:", error);
+    const response = await apiRequest<OverdueLoanData[]>(
+      `/api/reports/overdue-loans`,
+      { signal }
+    );
+
+    if (response instanceof Response) {
+      throw new Error(
+        "Expected ApiResponse, got raw Response for getOverdueLoansReport"
+      );
+    }
+
+    return response;
+  } catch (error: any) {
+    if (error.name === "AbortError") {
+      console.log("Overdue loans report request was cancelled");
+    } else {
+      console.error("Error fetching overdue loans report:", error);
+    }
     throw error;
   }
 };
 
-// Get loan analytics
-export const getLoanAnalytics = async (): Promise<
-  ApiResponse<LoanAnalytics>
-> => {
+export const getLoanAnalytics = async (
+  dateFrom: string,
+  dateTo: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<LoanAnalytics>> => {
   try {
-    // Assuming apiRequest resolves to ApiResponse<T> structure on success, despite broader type hint
-    return (await apiRequest<LoanAnalytics>(
-      "/api/reports/loan-analytics"
-    )) as ApiResponse<LoanAnalytics>;
-  } catch (error) {
-    console.error("Error fetching loan analytics:", error);
+    const params = new URLSearchParams({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
+
+    const response = await apiRequest<LoanAnalytics>(
+      `/api/reports/loan-analytics?${params.toString()}`,
+      { signal }
+    );
+
+    if (response instanceof Response) {
+      throw new Error(
+        "Expected ApiResponse, got raw Response for getLoanAnalytics"
+      );
+    }
+
+    return response;
+  } catch (error: any) {
+    if (error.name === "AbortError") {
+      console.log("Loan analytics request was cancelled");
+    } else {
+      console.error("Error fetching loan analytics:", error);
+    }
     throw error;
   }
 };
 
-// Export report function
 export const exportReport = async (
-  reportType: "loanSummary" | "paymentHistory" | "overdueLoans",
-  format: "excel" | "csv" | "json" = "excel",
-  dateFrom?: string,
-  dateTo?: string
+  reportType: string,
+  format: "excel" | "json" | "csv",
+  dateFrom: string,
+  dateTo: string
 ): Promise<void> => {
   try {
-    const params = new URLSearchParams();
-    params.append("type", reportType);
-    params.append("format", format);
-    if (dateFrom) params.append("date_from", dateFrom);
-    if (dateTo) params.append("date_to", dateTo);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("No authentication token found");
+    }
 
-    // Get the API URL
-    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const params = new URLSearchParams({
+      report_type: reportType,
+      format,
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
 
     const response = await fetch(
       `${API_URL}/api/reports/export?${params.toString()}`,
       {
+        method: "GET",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       }
     );
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Authentication failed. Please log in again.");
-      }
-      throw new Error(`Export failed: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Export failed: ${response.status}`);
     }
 
-    // Handle file downloads for excel and csv formats
-    if (format === "excel" || format === "csv") {
-      const blob = await response.blob();
-      const contentDisposition = response.headers.get("content-disposition");
-      let filename = `${reportType}_report_${
+    // Handle file download
+    const blob = await response.blob();
+    const filename =
+      response.headers
+        .get("Content-Disposition")
+        ?.split("filename=")[1]
+        ?.replace(/"/g, "") ||
+      `${reportType}_${format}_${
         new Date().toISOString().split("T")[0]
-      }.${format === "excel" ? "xlsx" : "csv"}`;
+      }.${format}`;
 
-      // Extract filename from content-disposition header if available
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-        if (filenameMatch) {
-          filename = filenameMatch[1];
-        }
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } else {
-      // Handle JSON response
-      const data = await response.json();
-      console.log("Export data:", data);
-    }
-  } catch (error) {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error: any) {
     console.error("Error exporting report:", error);
     throw error;
   }

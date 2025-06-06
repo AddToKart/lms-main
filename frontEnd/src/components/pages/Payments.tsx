@@ -149,6 +149,7 @@ const StatsCard: React.FC<StatsCardProps> = ({
 
 const Payments: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState<PaymentFilters>({
     page: 1,
     limit: 10,
@@ -172,8 +173,10 @@ const Payments: React.FC = () => {
     Error
   >({
     queryKey: ["payments", filters],
-    queryFn: () => getPayments(filters),
+    queryFn: ({ signal }) => getPayments(filters, signal),
     placeholderData: (previousData) => previousData,
+    staleTime: 1000 * 60, // 1 minute
+    refetchOnWindowFocus: false,
   });
 
   const paymentsData = paymentsQuery.data;
@@ -192,7 +195,9 @@ const Payments: React.FC = () => {
     // error: paymentStatsErrorData, // Can be used if specific error handling for stats is needed
   } = useQuery({
     queryKey: ["paymentStats"],
-    queryFn: getPaymentStats,
+    queryFn: ({ signal }) => getPaymentStats(signal),
+    staleTime: 1000 * 60 * 5, // 5 minutes for stats, as they might change less frequently
+    refetchOnWindowFocus: false,
   });
 
   const paymentStats: PaymentStats | null = paymentStatsData?.data || null;
@@ -523,9 +528,10 @@ const Payments: React.FC = () => {
             <div className="relative flex-1">
               <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5 z-10" />
               <Input
+                type="search"
                 placeholder="Search payments by client, loan ID, ref no..."
-                value={debouncedSearch}
-                onChange={handleSearchChange}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-12 h-12 text-base border-border/50 focus:border-primary/50 bg-background"
               />
             </div>

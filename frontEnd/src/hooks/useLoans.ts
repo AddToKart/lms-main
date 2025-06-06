@@ -149,12 +149,14 @@ export const useApproveLoan = () => {
       approvalData: { approved_amount: number; approval_notes?: string };
     }) => {
       const { approveLoan } = await import("../services/loanService");
-      const response = await approveLoan(id, approvalData);
+      const response = await approveLoan(id, {
+        approved_amount: approvalData.approved_amount,
+        notes: approvalData.approval_notes || "",
+        action: "approve",
+      });
       return response.data;
     },
     onSuccess: (data, variables) => {
-      // Update the specific loan in cache
-      queryClient.setQueryData(["loans", variables.id], data);
       // Invalidate loans list to refresh
       queryClient.invalidateQueries({ queryKey: ["loans"] });
     },
@@ -175,8 +177,12 @@ export const useRejectLoan = () => {
       id: number;
       rejectionReason?: string;
     }) => {
-      const { rejectLoan } = await import("../services/loanService");
-      const response = await rejectLoan(id, rejectionReason);
+      const { approveLoan } = await import("../services/loanService");
+      const response = await approveLoan(id, {
+        approved_amount: 0,
+        notes: rejectionReason || "",
+        action: "reject",
+      });
       return response.data;
     },
     onSuccess: (data, variables) => {
