@@ -420,6 +420,23 @@ const Reports: React.FC = () => {
     }
   };
 
+  const handleDateChange = (
+    field: "from" | "to",
+    value: string,
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    event.stopPropagation();
+    setDateRange((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleDateClick = (event: React.MouseEvent<HTMLInputElement>) => {
+    event.stopPropagation();
+  };
+
+  const handleDateBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    event.target.blur();
+  };
+
   return (
     <div className="p-6 space-y-6 bg-background min-h-screen">
       <header className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
@@ -578,7 +595,7 @@ const Reports: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div>
+          <div className="relative">
             <label
               htmlFor="dateFrom"
               className="block text-sm font-medium text-muted-foreground mb-1"
@@ -589,12 +606,14 @@ const Reports: React.FC = () => {
               id="dateFrom"
               type="date"
               value={dateRange.from}
-              onChange={(e) =>
-                setDateRange({ ...dateRange, from: e.target.value })
-              }
+              onChange={(e) => handleDateChange("from", e.target.value, e)}
+              onClick={handleDateClick}
+              onBlur={handleDateBlur}
+              className="w-full"
+              autoComplete="off"
             />
           </div>
-          <div>
+          <div className="relative">
             <label
               htmlFor="dateTo"
               className="block text-sm font-medium text-muted-foreground mb-1"
@@ -605,9 +624,11 @@ const Reports: React.FC = () => {
               id="dateTo"
               type="date"
               value={dateRange.to}
-              onChange={(e) =>
-                setDateRange({ ...dateRange, to: e.target.value })
-              }
+              onChange={(e) => handleDateChange("to", e.target.value, e)}
+              onClick={handleDateClick}
+              onBlur={handleDateBlur}
+              className="w-full"
+              autoComplete="off"
             />
           </div>
         </CardContent>
