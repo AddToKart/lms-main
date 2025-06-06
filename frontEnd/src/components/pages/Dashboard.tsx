@@ -1,24 +1,23 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
-  FiTrendingUp,
-  FiTrendingDown,
+  FiActivity,
   FiUsers,
-  FiDollarSign,
+  FiCreditCard,
+  FiTrendingUp,
+  FiTarget,
+  FiCalendar,
+  FiFilter,
   FiAlertTriangle,
   FiCheckCircle,
-  FiCreditCard,
-  FiCalendar,
-  FiMoreVertical,
-  FiArrowUpRight,
-  FiEye,
-  FiFilter,
-  FiAward,
-  FiTarget,
-  FiActivity,
-  FiStar,
-  FiZap,
   FiClock,
+  FiDollarSign,
+  FiZap,
+  FiMoreVertical,
+  FiEye,
+  FiStar,
+  FiAward,
   FiGift,
+  FiArrowUpRight,
 } from "react-icons/fi";
 import {
   AreaChart,
@@ -44,129 +43,785 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+// Helper function to format currency
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
 const Dashboard: React.FC = () => {
-  // Mock data for loan management system
-  const summaryData = {
-    totalLoans: 1247,
-    totalLoanAmount: 2450000,
-    activeClients: 892,
-    collectedThisMonth: 345780,
-    pendingApprovals: 23,
-    overduePayments: 15,
-    defaultRate: 2.3,
-    averageLoanAmount: 15500,
+  // State for real data
+  const [summaryData, setSummaryData] = useState({
+    totalLoans: 0,
+    totalLoanAmount: 0,
+    activeClients: 0,
+    collectedThisMonth: 0,
+    pendingApprovals: 0,
+    overduePayments: 0,
+    defaultRate: 0,
+    averageLoanAmount: 0,
+  });
+
+  const [monthlyCollectionData, setMonthlyCollectionData] = useState([]);
+  const [loanStatusData, setLoanStatusData] = useState([]);
+  const [weeklyApplications, setWeeklyApplications] = useState([]);
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [upcomingPayments, setUpcomingPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Helper functions with better validation
+  const safeParseFloat = (value: any, defaultValue = 0) => {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? defaultValue : parsed;
   };
 
-  // Mock chart data
-  const monthlyCollectionData = [
-    { month: "Jan", collected: 280000, target: 300000 },
-    { month: "Feb", collected: 320000, target: 310000 },
-    { month: "Mar", collected: 290000, target: 305000 },
-    { month: "Apr", collected: 350000, target: 320000 },
-    { month: "May", collected: 345780, target: 330000 },
-    { month: "Jun", collected: 0, target: 340000 },
-  ];
-
-  const loanStatusData = [
-    { name: "Active", value: 756, color: "#22C55E" },
-    { name: "Completed", value: 398, color: "#3B82F6" },
-    { name: "Pending", value: 63, color: "#F59E0B" },
-    { name: "Overdue", value: 30, color: "#EF4444" },
-  ];
-
-  const weeklyApplications = [
-    { day: "Mon", applications: 12, approvals: 8 },
-    { day: "Tue", applications: 18, approvals: 14 },
-    { day: "Wed", applications: 15, approvals: 10 },
-    { day: "Thu", applications: 22, approvals: 18 },
-    { day: "Fri", applications: 20, approvals: 15 },
-    { day: "Sat", applications: 8, approvals: 6 },
-    { day: "Sun", applications: 5, approvals: 3 },
-  ];
-
-  const recentActivities = [
-    {
-      id: 1,
-      type: "payment",
-      client: "John Doe",
-      loanId: "LN-2024-001",
-      amount: 2500,
-      status: "completed",
-      time: "2 minutes ago",
-      icon: FiCheckCircle,
-      color: "text-green-600",
-    },
-    {
-      id: 2,
-      type: "application",
-      client: "Sarah Wilson",
-      loanId: "LN-2024-089",
-      amount: 15000,
-      status: "pending",
-      time: "15 minutes ago",
-      icon: FiCreditCard,
-      color: "text-blue-600",
-    },
-    {
-      id: 3,
-      type: "overdue",
-      client: "Mike Johnson",
-      loanId: "LN-2024-045",
-      amount: 1200,
-      status: "overdue",
-      time: "1 hour ago",
-      icon: FiAlertTriangle,
-      color: "text-red-600",
-    },
-    {
-      id: 4,
-      type: "approval",
-      client: "Emma Davis",
-      loanId: "LN-2024-090",
-      amount: 8500,
-      status: "approved",
-      time: "2 hours ago",
-      icon: FiCheckCircle,
-      color: "text-green-600",
-    },
-  ];
-
-  const upcomingPayments = [
-    {
-      client: "Alex Thompson",
-      amount: 1850,
-      dueDate: "Tomorrow",
-      loanId: "LN-2024-023",
-    },
-    {
-      client: "Lisa Chen",
-      amount: 2200,
-      dueDate: "Dec 28",
-      loanId: "LN-2024-034",
-    },
-    {
-      client: "Robert Miller",
-      amount: 1600,
-      dueDate: "Dec 29",
-      loanId: "LN-2024-056",
-    },
-    {
-      client: "Maria Garcia",
-      amount: 3100,
-      dueDate: "Dec 30",
-      loanId: "LN-2024-067",
-    },
-  ];
-
-  // Helper function to format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+  const safeParseInt = (value: any, defaultValue = 0) => {
+    const parsed = parseInt(value);
+    return isNaN(parsed) ? defaultValue : parsed;
   };
+
+  const getDateXMonthsAgo = (months: number) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - months);
+    return date.toISOString().split("T")[0];
+  };
+
+  const getCurrentDate = () => {
+    return new Date().toISOString().split("T")[0];
+  };
+
+  const getDefaultWeeklyData = () => {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days.map((day) => ({ day, applications: 0, approvals: 0 }));
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) {
+      return `${diffMins} minutes ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours} hours ago`;
+    } else {
+      return `${diffDays} days ago`;
+    }
+  };
+
+  const formatDueDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return "Today";
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return "Tomorrow";
+    } else {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    }
+  };
+
+  const processMonthlyData = (paymentData: any[]) => {
+    // Initialize with empty months if no data
+    if (!Array.isArray(paymentData) || paymentData.length === 0) {
+      const emptyData = [];
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthName = date.toLocaleDateString("en-US", { month: "short" });
+        emptyData.push({
+          month: monthName,
+          collected: 0,
+          target: 5000, // Default target
+        });
+      }
+      return emptyData;
+    }
+
+    // Group payments by month and calculate totals
+    const monthlyMap = new Map();
+
+    paymentData.forEach((payment) => {
+      try {
+        const date = new Date(
+          payment.date || payment.payment_date || payment.created_at
+        );
+        if (isNaN(date.getTime())) return; // Skip invalid dates
+
+        const monthKey = `${date.getFullYear()}-${String(
+          date.getMonth() + 1
+        ).padStart(2, "0")}`;
+        const monthName = date.toLocaleDateString("en-US", { month: "short" });
+
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            month: monthName,
+            collected: 0,
+            target: 0,
+          });
+        }
+
+        const existing = monthlyMap.get(monthKey);
+        const amount = safeParseFloat(
+          payment.total_amount || payment.amount,
+          0
+        );
+        existing.collected += amount;
+      } catch (error) {
+        console.warn("Error processing payment data:", error, payment);
+      }
+    });
+
+    // Convert to array and calculate average for targets
+    const result = Array.from(monthlyMap.values());
+    const avgCollection =
+      result.length > 0
+        ? result.reduce((sum, item) => sum + item.collected, 0) / result.length
+        : 5000; // Default if no data
+
+    result.forEach((item) => {
+      item.target = Math.max(Math.round(avgCollection * 1.1), 1000); // Minimum target of 1000
+    });
+
+    // Fill in missing months and ensure we have 6 months
+    const sixMonthsData = [];
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const monthName = date.toLocaleDateString("en-US", { month: "short" });
+      const monthKey = `${date.getFullYear()}-${String(
+        date.getMonth() + 1
+      ).padStart(2, "0")}`;
+
+      const existingData = result.find((item) => item.month === monthName);
+      sixMonthsData.push(
+        existingData || {
+          month: monthName,
+          collected: 0,
+          target: Math.max(Math.round(avgCollection * 1.1), 1000),
+        }
+      );
+    }
+
+    return sixMonthsData;
+  };
+
+  const processLoanStatusData = (statusData: any[]) => {
+    if (!Array.isArray(statusData) || statusData.length === 0) {
+      // Return default data if no status data available
+      return [
+        { name: "Active", value: 0, color: "#22C55E" },
+        { name: "Completed", value: 0, color: "#3B82F6" },
+        { name: "Pending", value: 0, color: "#F59E0B" },
+        { name: "Overdue", value: 0, color: "#EF4444" },
+      ];
+    }
+
+    const statusMap = {
+      active: { name: "Active", color: "#22C55E" },
+      completed: { name: "Completed", color: "#3B82F6" },
+      paid_off: { name: "Completed", color: "#3B82F6" },
+      pending: { name: "Pending", color: "#F59E0B" },
+      overdue: { name: "Overdue", color: "#EF4444" },
+      rejected: { name: "Pending", color: "#F59E0B" },
+      defaulted: { name: "Overdue", color: "#EF4444" },
+    };
+
+    const groupedData = new Map();
+
+    statusData.forEach((item) => {
+      try {
+        const status = statusMap[item.status as keyof typeof statusMap];
+        if (status) {
+          const key = status.name;
+          const count = safeParseInt(item.count, 0);
+
+          if (groupedData.has(key)) {
+            groupedData.set(key, {
+              ...groupedData.get(key),
+              value: groupedData.get(key).value + count,
+            });
+          } else {
+            groupedData.set(key, {
+              name: status.name,
+              value: count,
+              color: status.color,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn("Error processing loan status data:", error, item);
+      }
+    });
+
+    const result = Array.from(groupedData.values()).filter(
+      (item) => item.value > 0
+    );
+
+    // Ensure we have at least some default data
+    if (result.length === 0) {
+      return [
+        { name: "Active", value: 0, color: "#22C55E" },
+        { name: "Completed", value: 0, color: "#3B82F6" },
+        { name: "Pending", value: 0, color: "#F59E0B" },
+        { name: "Overdue", value: 0, color: "#EF4444" },
+      ];
+    }
+
+    return result;
+  };
+
+  const fetchWeeklyApplications = async (API_URL: string, headers: any) => {
+    try {
+      const loansResponse = await fetch(`${API_URL}/api/loans?limit=1000`, {
+        headers,
+      });
+      if (!loansResponse.ok) {
+        setWeeklyApplications(getDefaultWeeklyData());
+        return;
+      }
+
+      const loansData = await loansResponse.json();
+      const loans = loansData.data?.loans || [];
+
+      // Process weekly data
+      const weeklyData = [];
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dayName = days[date.getDay()];
+
+        const dayLoans = loans.filter((loan: any) => {
+          try {
+            const loanDate = new Date(loan.created_at);
+            return (
+              !isNaN(loanDate.getTime()) &&
+              loanDate.toDateString() === date.toDateString()
+            );
+          } catch {
+            return false;
+          }
+        });
+
+        const applications = safeParseInt(dayLoans.length, 0);
+        const approvals = safeParseInt(
+          dayLoans.filter(
+            (loan: any) =>
+              loan.status === "approved" || loan.status === "active"
+          ).length,
+          0
+        );
+
+        weeklyData.push({
+          day: dayName,
+          applications,
+          approvals,
+        });
+      }
+
+      setWeeklyApplications(weeklyData);
+    } catch (error) {
+      console.error("Error fetching weekly applications:", error);
+      setWeeklyApplications(getDefaultWeeklyData());
+    }
+  };
+
+  const fetchRecentActivities = async (API_URL: string, headers: any) => {
+    try {
+      // Fetch recent payments and loans
+      const [paymentsResponse, loansResponse] = await Promise.all([
+        fetch(`${API_URL}/api/payments?limit=10`, { headers }),
+        fetch(`${API_URL}/api/loans?limit=10`, { headers }),
+      ]);
+
+      const activities = [];
+
+      if (paymentsResponse.ok) {
+        const paymentsData = await paymentsResponse.json();
+        const payments = paymentsData.data?.payments || [];
+
+        payments.slice(0, 5).forEach((payment: any) => {
+          activities.push({
+            id: `payment-${payment.id}`,
+            type: "payment",
+            client: payment.client_name || "Unknown Client",
+            loanId: `LN-${payment.loan_id}`,
+            amount: safeParseFloat(payment.amount, 0),
+            status: payment.status === "completed" ? "completed" : "pending",
+            time: formatTimeAgo(payment.created_at),
+            icon: FiCheckCircle,
+            color:
+              payment.status === "completed"
+                ? "text-green-600"
+                : "text-yellow-600",
+          });
+        });
+      }
+
+      if (loansResponse.ok) {
+        const loansData = await loansResponse.json();
+        const loans = loansData.data?.loans || [];
+
+        loans.slice(0, 3).forEach((loan: any) => {
+          let activityType = "application";
+          let status = loan.status;
+          let icon = FiCreditCard;
+          let color = "text-blue-600";
+
+          if (loan.status === "approved" || loan.status === "active") {
+            activityType = "approval";
+            status = "approved";
+            icon = FiCheckCircle;
+            color = "text-green-600";
+          } else if (loan.status === "overdue") {
+            activityType = "overdue";
+            status = "overdue";
+            icon = FiAlertTriangle;
+            color = "text-red-600";
+          }
+
+          activities.push({
+            id: `loan-${loan.id}`,
+            type: activityType,
+            client: loan.client_name || "Unknown Client",
+            loanId: `LN-${loan.id}`,
+            amount: safeParseFloat(loan.loan_amount, 0),
+            status: status,
+            time: formatTimeAgo(loan.created_at),
+            icon: icon,
+            color: color,
+          });
+        });
+      }
+
+      // Sort by most recent and limit to 4
+      activities.sort(
+        (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
+      );
+      setRecentActivities(activities.slice(0, 4));
+    } catch (error) {
+      console.error("Error fetching recent activities:", error);
+      setRecentActivities([]);
+    }
+  };
+
+  const fetchUpcomingPayments = async (API_URL: string, headers: any) => {
+    try {
+      // Fetch loans with upcoming due dates
+      const loansResponse = await fetch(
+        `${API_URL}/api/loans?status=active&limit=100`,
+        { headers }
+      );
+      if (!loansResponse.ok) return;
+
+      const loansData = await loansResponse.json();
+      const loans = loansData.data?.loans || [];
+
+      const upcoming = loans
+        .filter(
+          (loan: any) =>
+            loan.next_due_date && new Date(loan.next_due_date) >= new Date()
+        )
+        .sort(
+          (a: any, b: any) =>
+            new Date(a.next_due_date).getTime() -
+            new Date(b.next_due_date).getTime()
+        )
+        .slice(0, 4)
+        .map((loan: any) => ({
+          client: loan.client_name || "Unknown Client",
+          amount: safeParseFloat(
+            loan.installment_amount || loan.loan_amount / loan.term_months,
+            0
+          ),
+          dueDate: formatDueDate(loan.next_due_date),
+          loanId: `LN-${loan.id}`,
+        }));
+
+      setUpcomingPayments(upcoming);
+    } catch (error) {
+      console.error("Error fetching upcoming payments:", error);
+      setUpcomingPayments([]);
+    }
+  };
+
+  const fetchFallbackData = async (
+    API_URL: string,
+    headers: any,
+    analytics: any,
+    loanAnalytics: any,
+    monthlyPayments: any[],
+    loanStatusDistribution: any[]
+  ) => {
+    try {
+      const [loansResponse, paymentsResponse, clientsResponse] =
+        await Promise.all([
+          fetch(`${API_URL}/api/loans?limit=1000`, { headers }),
+          fetch(`${API_URL}/api/payments?limit=1000`, { headers }),
+          fetch(`${API_URL}/api/clients?limit=1000`, { headers }),
+        ]);
+
+      let loans = [];
+      let payments = [];
+      let clients = [];
+
+      if (loansResponse.ok) {
+        const loansData = await loansResponse.json();
+        loans = loansData.data?.loans || [];
+      }
+
+      if (paymentsResponse.ok) {
+        const paymentsData = await paymentsResponse.json();
+        payments = paymentsData.data?.payments || [];
+      }
+
+      if (clientsResponse.ok) {
+        const clientsData = await clientsResponse.json();
+        clients = clientsData.data?.clients || [];
+      }
+
+      // Calculate analytics from fetched data with safe parsing
+      const activeLoans = loans.filter(
+        (loan) => loan.status === "active" || loan.status === "approved"
+      );
+
+      const totalLoanAmount = loans.reduce(
+        (sum, loan) => sum + safeParseFloat(loan.loan_amount, 0),
+        0
+      );
+
+      const totalOutstanding = loans.reduce(
+        (sum, loan) =>
+          sum + safeParseFloat(loan.remaining_balance || loan.loan_amount, 0),
+        0
+      );
+
+      // Calculate monthly collections with date validation
+      const currentDate = new Date();
+      const monthlyCollections = payments
+        .filter((payment) => {
+          try {
+            const paymentDate = new Date(
+              payment.payment_date || payment.created_at
+            );
+            if (isNaN(paymentDate.getTime())) return false;
+
+            return (
+              paymentDate.getMonth() === currentDate.getMonth() &&
+              paymentDate.getFullYear() === currentDate.getFullYear()
+            );
+          } catch {
+            return false;
+          }
+        })
+        .reduce((sum, payment) => sum + safeParseFloat(payment.amount, 0), 0);
+
+      // Update analytics object with safe values
+      Object.assign(analytics, {
+        total_active_loans: safeParseInt(activeLoans.length, 0),
+        total_active_clients: safeParseInt(clients.length, 0),
+        monthly_collections: safeParseFloat(monthlyCollections, 0),
+        total_loan_amount: safeParseFloat(totalLoanAmount, 0),
+      });
+
+      // Update loan analytics
+      Object.assign(loanAnalytics, {
+        total_outstanding: safeParseFloat(totalOutstanding, 0),
+        average_loan_amount:
+          loans.length > 0
+            ? safeParseFloat(totalLoanAmount / loans.length, 0)
+            : 0,
+      });
+
+      // Create loan status distribution with safe counting
+      const statusCounts = loans.reduce((acc, loan) => {
+        const status = loan.status || "pending";
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {});
+
+      loanStatusDistribution.splice(
+        0,
+        loanStatusDistribution.length,
+        ...Object.entries(statusCounts).map(([status, count]) => ({
+          status,
+          count: safeParseInt(count as any, 0),
+        }))
+      );
+
+      // Process payments for monthly data with validation
+      const validPayments = payments
+        .filter((payment) => {
+          try {
+            const date = new Date(payment.payment_date || payment.created_at);
+            return !isNaN(date.getTime());
+          } catch {
+            return false;
+          }
+        })
+        .map((payment) => ({
+          date: payment.payment_date || payment.created_at,
+          total_amount: safeParseFloat(payment.amount, 0),
+        }));
+
+      monthlyPayments.splice(0, monthlyPayments.length, ...validPayments);
+    } catch (error) {
+      console.error("Error fetching fallback data:", error);
+      // Set safe defaults
+      Object.assign(analytics, {
+        total_active_loans: 0,
+        total_active_clients: 0,
+        monthly_collections: 0,
+        total_loan_amount: 0,
+      });
+      Object.assign(loanAnalytics, {
+        total_outstanding: 0,
+        average_loan_amount: 0,
+      });
+    }
+  };
+
+  // Fetch dashboard data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+
+        // Get API URL
+        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+          throw new Error("No authentication token found");
+        }
+
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        };
+
+        // Initialize with safe default values
+        let analytics = {
+          total_active_loans: 0,
+          total_active_clients: 0,
+          monthly_collections: 0,
+          total_loan_amount: 0,
+        };
+        let loanAnalytics = {
+          total_outstanding: 0,
+          average_loan_amount: 0,
+        };
+        let monthlyPayments = [];
+        let loanStatusDistribution = [];
+
+        // Try to fetch analytics with error handling
+        try {
+          const analyticsResponse = await fetch(
+            `${API_URL}/api/reports/analytics`,
+            { headers }
+          );
+          if (analyticsResponse.ok) {
+            const analyticsData = await analyticsResponse.json();
+            const statsData = analyticsData.data?.overall_stats || {};
+
+            analytics = {
+              total_active_loans: safeParseInt(statsData.total_active_loans, 0),
+              total_active_clients: safeParseInt(
+                statsData.total_active_clients,
+                0
+              ),
+              monthly_collections: safeParseFloat(
+                statsData.monthly_collections,
+                0
+              ),
+              total_loan_amount: safeParseFloat(statsData.total_loan_amount, 0),
+            };
+
+            loanStatusDistribution = Array.isArray(
+              analyticsData.data?.loan_status_distribution
+            )
+              ? analyticsData.data.loan_status_distribution
+              : [];
+          }
+        } catch (error) {
+          console.warn("Analytics endpoint not available, using fallback data");
+        }
+
+        // Try to fetch loan analytics
+        try {
+          const loanAnalyticsResponse = await fetch(
+            `${API_URL}/api/reports/loan-analytics`,
+            { headers }
+          );
+          if (loanAnalyticsResponse.ok) {
+            const loanAnalyticsData = await loanAnalyticsResponse.json();
+            const loanData = loanAnalyticsData.data || {};
+
+            loanAnalytics = {
+              total_outstanding: safeParseFloat(loanData.total_outstanding, 0),
+              average_loan_amount: safeParseFloat(
+                loanData.average_loan_amount,
+                0
+              ),
+            };
+          }
+        } catch (error) {
+          console.warn(
+            "Loan analytics endpoint not available, calculating from loans"
+          );
+        }
+
+        // Try to fetch payment history
+        try {
+          const monthlyResponse = await fetch(
+            `${API_URL}/api/reports/payment-history?date_from=${getDateXMonthsAgo(
+              6
+            )}&date_to=${getCurrentDate()}`,
+            { headers }
+          );
+          if (monthlyResponse.ok) {
+            const monthlyData = await monthlyResponse.json();
+            monthlyPayments = Array.isArray(monthlyData.data)
+              ? monthlyData.data
+              : [];
+          }
+        } catch (error) {
+          console.warn(
+            "Payment history endpoint not available, using recent payments"
+          );
+        }
+
+        // If endpoints failed, fetch basic data from existing endpoints
+        if (
+          analytics.total_active_loans === 0 &&
+          analytics.total_active_clients === 0
+        ) {
+          await fetchFallbackData(
+            API_URL,
+            headers,
+            analytics,
+            loanAnalytics,
+            monthlyPayments,
+            loanStatusDistribution
+          );
+        }
+
+        // Process and set summary data with validation
+        setSummaryData({
+          totalLoans: safeParseInt(analytics.total_active_loans, 0),
+          totalLoanAmount: safeParseFloat(
+            loanAnalytics.total_outstanding || analytics.total_loan_amount,
+            0
+          ),
+          activeClients: safeParseInt(analytics.total_active_clients, 0),
+          collectedThisMonth: safeParseFloat(analytics.monthly_collections, 0),
+          pendingApprovals: 0,
+          overduePayments: 0,
+          defaultRate: 0,
+          averageLoanAmount: safeParseFloat(
+            loanAnalytics.average_loan_amount,
+            0
+          ),
+        });
+
+        // Process chart data with validation
+        const processedMonthlyData = processMonthlyData(monthlyPayments);
+        setMonthlyCollectionData(processedMonthlyData);
+
+        const processedStatusData = processLoanStatusData(
+          loanStatusDistribution
+        );
+        setLoanStatusData(processedStatusData);
+
+        // Update summary data with calculated values
+        const pendingCount =
+          loanStatusDistribution.find((s) => s.status === "pending")?.count ||
+          0;
+        const overdueCount =
+          loanStatusDistribution.find((s) => s.status === "overdue")?.count ||
+          0;
+        const totalLoans = loanStatusDistribution.reduce(
+          (sum, s) => sum + safeParseInt(s.count, 0),
+          0
+        );
+        const defaultedCount =
+          loanStatusDistribution.find((s) => s.status === "defaulted")?.count ||
+          0;
+
+        setSummaryData((prev) => ({
+          ...prev,
+          pendingApprovals: safeParseInt(pendingCount, 0),
+          overduePayments: safeParseInt(overdueCount, 0),
+          defaultRate:
+            totalLoans > 0
+              ? safeParseFloat((defaultedCount / totalLoans) * 100, 0)
+              : 0,
+        }));
+
+        // Fetch additional data
+        await fetchWeeklyApplications(API_URL, headers);
+        await fetchRecentActivities(API_URL, headers);
+        await fetchUpcomingPayments(API_URL, headers);
+      } catch (err: any) {
+        console.error("Error fetching dashboard data:", err);
+        setError(err.message || "Failed to fetch dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="p-6 space-y-8 animate-fade-in min-h-screen bg-gradient-to-br from-background via-background to-muted/5">
+        <div className="flex items-center justify-center h-64">
+          <div className="flex items-center gap-3">
+            <FiActivity className="h-6 w-6 animate-spin text-primary" />
+            <span className="text-lg font-medium">Loading dashboard...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="p-6 space-y-8 animate-fade-in min-h-screen bg-gradient-to-br from-background via-background to-muted/5">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <FiAlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Error Loading Dashboard
+            </h3>
+            <p className="text-muted-foreground">{error}</p>
+            <Button onClick={() => window.location.reload()} className="mt-4">
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-8 animate-fade-in min-h-screen bg-gradient-to-br from-background via-background to-muted/5">
@@ -212,7 +867,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Enhanced Stats Grid with improved design */}
+      {/* Enhanced Stats Grid with real data */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
         <Card className="relative overflow-hidden transition-all duration-500 hover:shadow-2xl hover:scale-105 hover:-translate-y-2 border-2 border-blue-200/50 dark:border-blue-800/50 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 hover-lift group stagger-item">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/5"></div>
@@ -231,8 +886,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center text-xs text-muted-foreground mt-2">
               <FiTrendingUp className="mr-1 h-3 w-3 text-green-500" />
-              <span className="text-green-600 font-medium">+12.5%</span>
-              <span className="ml-1">vs last month</span>
+              <span className="text-green-600 font-medium">Active loans</span>
             </div>
           </CardContent>
         </Card>
@@ -242,7 +896,7 @@ const Dashboard: React.FC = () => {
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-green-500/10 to-transparent rounded-full blur-xl"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 relative z-10">
             <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-              Total Loan Amount
+              Total Outstanding
             </CardTitle>
             <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg group-hover:scale-110 transition-transform duration-300">
               <FiDollarSign className="h-5 w-5 text-white" />
@@ -254,8 +908,9 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center text-xs text-muted-foreground mt-2">
               <FiTrendingUp className="mr-1 h-3 w-3 text-green-500" />
-              <span className="text-green-600 font-medium">+8.2%</span>
-              <span className="ml-1">vs last month</span>
+              <span className="text-green-600 font-medium">
+                Outstanding balance
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -277,8 +932,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center text-xs text-muted-foreground mt-2">
               <FiTrendingUp className="mr-1 h-3 w-3 text-green-500" />
-              <span className="text-green-600 font-medium">+5.3%</span>
-              <span className="ml-1">vs last month</span>
+              <span className="text-green-600 font-medium">Active clients</span>
             </div>
           </CardContent>
         </Card>
@@ -299,15 +953,14 @@ const Dashboard: React.FC = () => {
               {formatCurrency(summaryData.collectedThisMonth)}
             </div>
             <div className="flex items-center text-xs text-muted-foreground mt-2">
-              <FiTrendingDown className="mr-1 h-3 w-3 text-red-500" />
-              <span className="text-red-600 font-medium">-2.1%</span>
-              <span className="ml-1">vs target</span>
+              <FiTrendingUp className="mr-1 h-3 w-3 text-green-500" />
+              <span className="text-green-600 font-medium">This month</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Enhanced Charts Section with better spacing and design */}
+      {/* Enhanced Charts Section with real data */}
       <div className="grid gap-8 lg:grid-cols-2 animate-slide-up">
         {/* Enhanced Monthly Collections Chart */}
         <Card className="relative overflow-hidden hover-lift border-border/50 bg-gradient-to-br from-background via-background to-muted/5 shadow-xl">

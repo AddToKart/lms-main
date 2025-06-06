@@ -299,9 +299,9 @@ const Loans: React.FC = () => {
         } else {
           const monthlyInterestRate = annualInterestRate / 12;
           const payment =
-            principal *
-            (monthlyInterestRate *
-              Math.pow(1 + monthlyInterestRate, termInMonths)) /
+            (principal *
+              (monthlyInterestRate *
+                Math.pow(1 + monthlyInterestRate, termInMonths))) /
             (Math.pow(1 + monthlyInterestRate, termInMonths) - 1);
           setEstimatedMonthlyPayment(payment);
         }
@@ -406,9 +406,33 @@ const Loans: React.FC = () => {
             return Number((statsData as any)[key]) || 0;
           };
 
+          // Calculate portfolio value - sum of all outstanding loan amounts
+          let portfolioValue = getStatValue("total_loan_amount");
+
+          // If total_loan_amount is 0 or not available, calculate from active loans
+          if (portfolioValue === 0) {
+            portfolioValue =
+              getStatValue("total_outstanding") ||
+              getStatValue("active_loan_amount") ||
+              getStatValue("portfolio_value") ||
+              0;
+          }
+
+          // If still 0, calculate from the current loans array
+          if (portfolioValue === 0 && loans.length > 0) {
+            portfolioValue = loans.reduce((sum, loan) => {
+              const amount = loan.approved_amount || loan.loan_amount || 0;
+              // Only count active loans for portfolio value
+              if (loan.status === "active" || loan.status === "approved") {
+                return sum + Number(amount);
+              }
+              return sum;
+            }, 0);
+          }
+
           setLoanStats({
             total_loans: getStatValue("total_loans"),
-            total_loan_amount: getStatValue("total_loan_amount"),
+            total_loan_amount: portfolioValue, // Use calculated portfolio value
             active_loans: getStatValue("active_loans"),
             average_interest_rate: getStatValue("average_interest_rate"),
             completed_loans: getStatValue("completed_loans"),
@@ -416,33 +440,27 @@ const Loans: React.FC = () => {
             overdue_loans: getStatValue("overdue_loans"),
           });
         } else {
-          // Set default stats if statsData is not an object
-          setLoanStats({
-            total_loans: 0,
-            total_loan_amount: 0,
-            active_loans: 0,
-            average_interest_rate: 0,
-            completed_loans: 0,
-            pending_loans: 0,
-            overdue_loans: 0,
-          });
+          // Calculate stats from current loans if API doesn't provide them
+          const calculatedStats = calculateStatsFromLoans(loans);
+          setLoanStats(calculatedStats);
         }
       } else {
-        // Set default stats if response is not an object
-        setLoanStats({
-          total_loans: 0,
-          total_loan_amount: 0,
-          active_loans: 0,
-          average_interest_rate: 0,
-          completed_loans: 0,
-          pending_loans: 0,
-          overdue_loans: 0,
-        });
+        // Calculate stats from current loans if API response is invalid
+        const calculatedStats = calculateStatsFromLoans(loans);
+        setLoanStats(calculatedStats);
       }
     } catch (err) {
       console.error("Error fetching loan stats:", err);
-      // Set default stats on error
-      setLoanStats({
+      // Calculate stats from current loans on error
+      const calculatedStats = calculateStatsFromLoans(loans);
+      setLoanStats(calculatedStats);
+    }
+  };
+
+  // Helper function to calculate stats from loans array
+  const calculateStatsFromLoans = (loansArray: Loan[]) => {
+    if (!Array.isArray(loansArray) || loansArray.length === 0) {
+      return {
         total_loans: 0,
         total_loan_amount: 0,
         active_loans: 0,
@@ -450,9 +468,81 @@ const Loans: React.FC = () => {
         completed_loans: 0,
         pending_loans: 0,
         overdue_loans: 0,
-      });
+      };
     }
+
+    const stats = loansArray.reduce(
+      (acc, loan) => {
+        const loanAmount = Number(
+          loan.approved_amount || loan.loan_amount || 0
+        );
+        const interestRate = Number(loan.interest_rate || 0);
+
+        acc.total_loans++;
+
+        // Count portfolio value from active/approved loans
+        if (loan.status === "active" || loan.status === "approved") {
+          acc.total_loan_amount += loanAmount;
+          acc.active_loans++;
+        }
+
+        // Count by status
+        switch (loan.status) {
+          case "completed":
+          case "paid":
+            acc.completed_loans++;
+            break;
+          case "pending":
+            acc.pending_loans++;
+            break;
+          case "overdue":
+            acc.overdue_loans++;
+            break;
+        }
+
+        // Calculate average interest rate
+        if (interestRate > 0) {
+          acc.interest_sum += interestRate;
+          acc.interest_count++;
+        }
+
+        return acc;
+      },
+      {
+        total_loans: 0,
+        total_loan_amount: 0,
+        active_loans: 0,
+        completed_loans: 0,
+        pending_loans: 0,
+        overdue_loans: 0,
+        interest_sum: 0,
+        interest_count: 0,
+      }
+    );
+
+    return {
+      total_loans: stats.total_loans,
+      total_loan_amount: stats.total_loan_amount,
+      active_loans: stats.active_loans,
+      average_interest_rate:
+        stats.interest_count > 0
+          ? stats.interest_sum / stats.interest_count
+          : 0,
+      completed_loans: stats.completed_loans,
+      pending_loans: stats.pending_loans,
+      overdue_loans: stats.overdue_loans,
+    };
   };
+
+  // Fetch loans on component mount and when filters change
+  useEffect(() => {
+    fetchLoans();
+  }, [filters]);
+
+  // Fetch stats after loans are loaded
+  useEffect(() => {
+    fetchLoanStats();
+  }, [loans]); // Depend on loans so stats update when loans change
 
   // Handle search input change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -632,9 +722,12 @@ const Loans: React.FC = () => {
     if (annualInterestRate === 0) return principal / termMonths; // No interest
 
     const monthlyInterestRate = annualInterestRate / 100 / 12;
-    const numerator = principal * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, termMonths);
+    const numerator =
+      principal *
+      monthlyInterestRate *
+      Math.pow(1 + monthlyInterestRate, termMonths);
     const denominator = Math.pow(1 + monthlyInterestRate, termMonths) - 1;
-  
+
     if (denominator === 0) return principal / termMonths; // Avoid division by zero if rate is effectively zero for short term
 
     const monthlyPayment = numerator / denominator;
@@ -650,7 +743,11 @@ const Loans: React.FC = () => {
 
     try {
       let calculatedInstallmentAmount: number | undefined = undefined;
-      if (approvalData.action === "approve" && approvalData.approved_amount && approvalData.approved_amount > 0) {
+      if (
+        approvalData.action === "approve" &&
+        approvalData.approved_amount &&
+        approvalData.approved_amount > 0
+      ) {
         calculatedInstallmentAmount = calculateInstallmentAmount(
           approvalData.approved_amount, // Use the actual approved amount
           approvalData.loan.interest_rate,
@@ -844,6 +941,7 @@ const Loans: React.FC = () => {
               value={(loanStats.total_loans || 0).toString()}
               icon={<FiCreditCard className="h-5 w-5" />}
               variant="default"
+              subtitle={`${loans.length} currently loaded`}
             />
           </div>
           <div className="stagger-item">
@@ -852,6 +950,7 @@ const Loans: React.FC = () => {
               value={formatCurrency(loanStats.total_loan_amount || 0)}
               icon={<FiDollarSign className="h-5 w-5" />}
               variant="success"
+              subtitle="Active & approved loans"
             />
           </div>
           <div className="stagger-item">
@@ -860,6 +959,7 @@ const Loans: React.FC = () => {
               value={(loanStats.active_loans || 0).toString()}
               icon={<FiTrendingUp className="h-5 w-5" />}
               variant="warning"
+              subtitle="Currently disbursed"
             />
           </div>
           <div className="stagger-item">
@@ -868,6 +968,7 @@ const Loans: React.FC = () => {
               value={`${(loanStats.average_interest_rate || 0).toFixed(2)}%`}
               icon={<FiPercent className="h-5 w-5" />}
               variant="danger"
+              subtitle="Across all loans"
             />
           </div>
         </div>
@@ -1290,7 +1391,9 @@ const Loans: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Interest Rate:</span>
+                    <span className="text-muted-foreground">
+                      Interest Rate:
+                    </span>
                     <div className="font-medium">
                       {approvalData.loan.interest_rate}%
                     </div>
@@ -1329,9 +1432,7 @@ const Loans: React.FC = () => {
                 <div className="flex gap-3">
                   <Button
                     variant={
-                      approvalData.action === "approve"
-                        ? "default"
-                        : "outline"
+                      approvalData.action === "approve" ? "default" : "outline"
                     }
                     onClick={() =>
                       setApprovalData((prev) => ({
@@ -1347,7 +1448,9 @@ const Loans: React.FC = () => {
                   </Button>
                   <Button
                     variant={
-                      approvalData.action === "reject" ? "destructive" : "outline"
+                      approvalData.action === "reject"
+                        ? "destructive"
+                        : "outline"
                     }
                     onClick={() =>
                       setApprovalData((prev) => ({
@@ -1367,7 +1470,10 @@ const Loans: React.FC = () => {
               {/* Approved Amount (only if approving) */}
               {approvalData.action === "approve" && (
                 <div className="space-y-2">
-                  <label htmlFor="approved_amount" className="text-sm font-medium">
+                  <label
+                    htmlFor="approved_amount"
+                    className="text-sm font-medium"
+                  >
                     Approved Amount
                   </label>
                   <div className="relative">
