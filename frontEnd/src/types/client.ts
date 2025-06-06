@@ -76,17 +76,41 @@ export interface ClientDeleteResponse {
 
 // Interfaces for Client Details View
 
+export interface ClientDetailsData {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country: string;
+  id_type?: string;
+  id_number?: string;
+  status: string;
+  created_at: string;
+  updated_at?: string;
+  loans: ClientLoan[];
+  upcoming_payments: ClientUpcomingPayment[];
+  active_loans_count: number;
+  total_remaining_balance: number;
+  total_upcoming_payments_amount: number;
+}
+
 export interface ClientLoan {
   id: string; // Consider if this should be number, aligning with database types
   loan_type: string; // Renamed from 'type' for clarity, align with backend
   loan_amount: number; // Renamed from 'amount' for clarity
+  approved_amount: number;
   remaining_balance: number;
   interest_rate: number;
-  next_due_date: string; // Ensure this is a parsable date string
-  status: "Active" | "Overdue" | "Paid" | "Pending" | "Defaulted"; // Expanded status options
-  term_months?: number;
+  term_months: number;
   start_date?: string;
   end_date?: string;
+  status: string;
+  next_due_date?: string; // Ensure this is a parsable date string
 }
 
 export interface ClientUpcomingPayment {
@@ -94,18 +118,6 @@ export interface ClientUpcomingPayment {
   loan_type: string;
   amount_due: number;
   due_date: string; // Ensure this is a parsable date string
-  payment_id?: string; // Optional payment ID if available
-}
-
-export interface ClientDetailsData extends Client {
-  loans: ClientLoan[];
-  upcoming_payments: ClientUpcomingPayment[];
-  total_remaining_balance: number;
-  total_upcoming_payments_amount: number;
-  active_loans_count: number;
-  // You might also want to include other aggregated data here, e.g.:
-  // total_loans_count: number;
-  // average_interest_rate: number;
 }
 
 export interface ClientDetailsApiResponse {

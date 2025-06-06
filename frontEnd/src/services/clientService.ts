@@ -73,59 +73,43 @@ export const getClients = async (
     }`;
     console.log("[ClientService] Request URL:", url);
 
-    const fetchResponse = await fetch(url, {
+    const response = await fetch(url, {
       method: "GET",
       headers: getAuthHeaders(),
     });
 
-    if (!fetchResponse.ok) {
+    if (!response.ok) {
       let errorBody = "Could not read error body.";
       try {
-        errorBody = await fetchResponse.text();
+        errorBody = await response.text();
       } catch (e) {
         /* ignore */
       }
       console.error(
-        `[ClientService] HTTP error! Status: ${fetchResponse.status}, Body: ${errorBody}`
+        `[ClientService] HTTP error! Status: ${response.status}, Body: ${errorBody}`
       );
-      throw new Error(`HTTP error! status: ${fetchResponse.status}`);
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    let responseData: any;
-    const responseText = await fetchResponse.text(); // Get raw text first
-
-    try {
-      responseData = JSON.parse(responseText);
-    } catch (jsonError: any) {
-      console.error(
-        "[ClientService] Failed to parse JSON response:",
-        jsonError.message
-      );
-      console.error(
-        "[ClientService] Raw response text on JSON error:",
-        responseText
-      );
-      throw new Error(
-        "Failed to parse server response. The response was not valid JSON."
-      );
-    }
+    const data = await response.json();
+    console.log("[ClientService] Client response:", data);
 
     // Log the parsed data structure
     console.log(
       "[ClientService] Parsed JSON data:",
-      JSON.stringify(responseData, null, 2)
+      JSON.stringify(data, null, 2)
     );
 
     // Defensive checks for the expected structure
-    if (typeof responseData !== "object" || responseData === null) {
+    if (typeof data !== "object" || data === null) {
       console.error(
         "[ClientService] Invalid response: Expected an object, got:",
-        typeof responseData,
-        responseData
+        typeof data,
+        data
       );
       throw new Error("Invalid response structure from API: Not an object.");
     }
-    if (typeof responseData.success !== "boolean") {
+    if (typeof data.success !== "boolean") {
       console.error(
         '[ClientService] Invalid response: Missing or non-boolean "success" flag.'
       );
@@ -134,8 +118,8 @@ export const getClients = async (
       );
     }
 
-    if (responseData.success === true) {
-      if (typeof responseData.data !== "object" || responseData.data === null) {
+    if (data.success === true) {
+      if (typeof data.data !== "object" || data.data === null) {
         console.error(
           '[ClientService] Invalid response: "data" property is missing or not an object in successful response.'
         );
@@ -143,15 +127,19 @@ export const getClients = async (
           'Successful API response has invalid "data" property structure.'
         );
       }
-      if (!Array.isArray(responseData.data.clients)) {
+      if (!Array.isArray(data.data.clients)) {
         console.error(
-          '[ClientService] Invalid response: "data.clients" is not an array in successful response.'
+          '[ClientService] Invalid response: "data.clients" is not an array in successful response.',
+          "Received data.clients:",
+          data.data.clients,
+          "Type:",
+          typeof data.data.clients
         );
         throw new Error(
           'Successful API response has "data.clients" not as an array.'
         );
       }
-      if (typeof responseData.data.total !== "number") {
+      if (typeof data.data.total !== "number") {
         console.error(
           '[ClientService] Invalid response: "data.total" is not a number in successful response.'
         );
@@ -161,8 +149,8 @@ export const getClients = async (
       }
     }
 
-    // console.log('[ClientService] Returning processed data structure is valid.'); // Old log replaced by JSON.stringify above
-    return responseData as ApiResponse<PaginatedResponse<Client>>;
+    console.log("[ClientService] Response validation passed, returning data");
+    return data;
   } catch (error: any) {
     // Log the error message and stack trace to understand where the TypeError originates
     console.error(
@@ -407,3 +395,9 @@ export const getClientStats = async (): Promise<ApiResponse<ClientStats>> => {
 
 // Export additional functions for compatibility
 export { getClients as fetchClients };
+// Add these exports if they're not already there
+export type {
+  ClientDetailsData,
+  ClientLoan,
+  ClientUpcomingPayment,
+} from "../types/client";

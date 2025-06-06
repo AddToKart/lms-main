@@ -186,13 +186,11 @@ const createLoan = async (req, res) => {
       error.code === "ER_NO_REFERENCED_ROW" ||
       error.code === "ER_NO_REFERENCED_ROW_2"
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid client ID. Client does not exist.",
-          error: error.message,
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client ID. Client does not exist.",
+        error: error.message,
+      });
     }
     // ER_TRUNCATED_WRONG_VALUE_FOR_FIELD can be for dates or numbers
     if (error.code === "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD") {
@@ -209,14 +207,12 @@ const createLoan = async (req, res) => {
         .json({ success: false, message: fieldMessage, error: error.message });
     }
     if (error.code === "ER_DATA_TOO_LONG") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Data too long for one of the fields (e.g., purpose, payment frequency).",
-          error: error.message,
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Data too long for one of the fields (e.g., purpose, payment frequency).",
+        error: error.message,
+      });
     }
     // Generic error for other cases
     res.status(500).json({
@@ -231,6 +227,8 @@ const createLoan = async (req, res) => {
 const getLoansLogic = async (req, res, endpointName = "getLoans") => {
   try {
     console.log(`[LoanController] ${endpointName} - Request received`);
+    console.log(`[LoanController] Query params:`, req.query);
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -258,13 +256,21 @@ const getLoansLogic = async (req, res, endpointName = "getLoans") => {
       queryParams.push(status);
     }
     if (client_id) {
+      console.log(`[LoanController] Filtering by client_id: ${client_id}`);
       whereClause += " AND l.client_id = ?";
       queryParams.push(client_id);
     }
 
+    console.log(`[LoanController] WHERE clause: ${whereClause}`);
+    console.log(
+      `[LoanController] Query params: ${JSON.stringify(queryParams)}`
+    );
+
     const countQuery = `SELECT COUNT(*) as total FROM loans l JOIN clients c ON l.client_id = c.id ${whereClause}`;
     const [countResult] = await pool.execute(countQuery, queryParams);
     const total = countResult[0].total;
+
+    console.log(`[LoanController] Total loans found: ${total}`);
 
     const selectQuery = `
       SELECT 
@@ -288,6 +294,11 @@ const getLoansLogic = async (req, res, endpointName = "getLoans") => {
       limit,
       offset,
     ]);
+
+    console.log(`[LoanController] Loans retrieved: ${loans.length}`);
+    if (loans.length > 0) {
+      console.log(`[LoanController] First loan status: ${loans[0].status}`);
+    }
 
     const loansWithInstallments = loans.map((loan) => {
       let installment = loan.installment_amount;

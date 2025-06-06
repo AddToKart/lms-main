@@ -41,11 +41,12 @@ import {
   deleteClient,
   createClient,
   updateClient,
-  getClientStats, // Add this import
+  getClientStats,
+  getClientDetailsById, // Add this import
   Client,
   ClientFormData,
   ClientFilters,
-  ClientStats, // Import the ClientStats type
+  ClientStats,
 } from "../../services/clientService";
 import ClientForm from "../forms/ClientForm";
 
@@ -287,11 +288,6 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  // Early return if modal is open but no client details yet AND not fetching (implies an issue)
-  // Or, if there's an error and no clientDetails to display partially.
-  // This logic might need refinement based on how optimistic updates are handled.
-  if (!clientDetails && !isFetchingClientDetails && !fetchClientDetailsError)
-    return null;
   // If there's an error and no client details at all, we might want to show a simpler error modal
   // or let the main content area handle the error if clientDetails is partially available.
 

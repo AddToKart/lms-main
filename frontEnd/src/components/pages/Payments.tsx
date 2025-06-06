@@ -240,23 +240,37 @@ const Payments: React.FC = () => {
   const createPaymentMutation = useMutation({
     mutationFn: createPayment,
     onSuccess: (response: ApiResponse<PaymentMutationResponseData>) => {
-      queryClient.invalidateQueries({ queryKey: ["payments"] });
-      queryClient.invalidateQueries({ queryKey: ["paymentStats"] });
-      
-      const responseData = response.data; // Access the actual data payload
-      // Backend createPayment returns: { message, paymentId, loan_id, client_id, ... }
-      if (responseData && responseData.client_id && responseData.loan_id && responseData.paymentId) {
+      console.log("Payment creation success response:", response);
+
+      const responseData = response.data;
+      // Backend createPayment returns: { payment_id, loan_id, client_id, ... }
+      if (
+        responseData &&
+        responseData.client_id &&
+        responseData.loan_id &&
+        responseData.payment_id
+      ) {
         const event = new CustomEvent("paymentMade", {
-          detail: { 
-            clientId: responseData.client_id, 
-            loanId: responseData.loan_id, 
-            paymentId: responseData.paymentId 
+          detail: {
+            clientId: responseData.client_id,
+            loanId: responseData.loan_id,
+            paymentId: responseData.payment_id,
           },
         });
         window.dispatchEvent(event);
-        console.log("Dispatched paymentMade event after create for client:", responseData.client_id, "loan:", responseData.loan_id, "payment:", responseData.paymentId);
+        console.log(
+          "Dispatched paymentMade event after create for client:",
+          responseData.client_id,
+          "loan:",
+          responseData.loan_id,
+          "payment:",
+          responseData.payment_id
+        );
       } else {
-        console.warn("paymentMade event not dispatched after create: client_id, loan_id or paymentId missing in response data", responseData);
+        console.warn(
+          "paymentMade event not dispatched after create: client_id, loan_id or payment_id missing in response data",
+          responseData
+        );
       }
 
       setShowPaymentForm(false);
@@ -286,19 +300,35 @@ const Payments: React.FC = () => {
       // The 'responseData' here is from the updatePayment backend endpoint.
       // It should contain payment_id (or paymentId), loan_id, and client_id.
       // The PaymentMutationResponseData interface has both paymentId and payment_id to handle potential inconsistencies.
-      const paymentIdentifier = responseData?.paymentId || responseData?.payment_id;
-      if (responseData && responseData.client_id && responseData.loan_id && paymentIdentifier) {
+      const paymentIdentifier =
+        responseData?.paymentId || responseData?.payment_id;
+      if (
+        responseData &&
+        responseData.client_id &&
+        responseData.loan_id &&
+        paymentIdentifier
+      ) {
         const event = new CustomEvent("paymentMade", {
-          detail: { 
-            clientId: responseData.client_id, 
-            loanId: responseData.loan_id, 
-            paymentId: paymentIdentifier 
+          detail: {
+            clientId: responseData.client_id,
+            loanId: responseData.loan_id,
+            paymentId: paymentIdentifier,
           },
         });
         window.dispatchEvent(event);
-        console.log("Dispatched paymentMade event after update for client:", responseData.client_id, "loan:", responseData.loan_id, "payment:", paymentIdentifier);
+        console.log(
+          "Dispatched paymentMade event after update for client:",
+          responseData.client_id,
+          "loan:",
+          responseData.loan_id,
+          "payment:",
+          paymentIdentifier
+        );
       } else {
-        console.warn("paymentMade event not dispatched after update: client_id, loan_id, or payment_id missing in response data", responseData);
+        console.warn(
+          "paymentMade event not dispatched after update: client_id, loan_id, or payment_id missing in response data",
+          responseData
+        );
       }
 
       setShowPaymentForm(false);

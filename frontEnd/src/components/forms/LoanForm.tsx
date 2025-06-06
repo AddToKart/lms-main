@@ -54,10 +54,18 @@ const LoanForm: React.FC<LoanFormProps> = ({
   const fetchClients = async () => {
     try {
       const response = await getClients({ page: 1, limit: 100 });
-      // Add null checks for the response
-      if (response && response.data && response.data.clients) {
+      console.log("[LoanForm] Clients response:", response);
+
+      // Fix: Check for the correct response structure
+      if (
+        response &&
+        response.success &&
+        response.data &&
+        response.data.clients
+      ) {
         setClients(response.data.clients);
       } else {
+        console.error("[LoanForm] Invalid response structure:", response);
         setClients([]);
       }
     } catch (error) {
