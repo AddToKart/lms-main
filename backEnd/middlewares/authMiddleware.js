@@ -28,24 +28,44 @@ const protect = async (req, res, next) => {
       console.log("[AuthMiddleware] Token decoded:", decoded);
 
       // Get user from the token
-      const [users] = await pool.query(
-        "SELECT id, username, role, is_active FROM users WHERE id = ? AND is_active = true", // Ensure user is active
-        [decoded.id]
-      );
+      let userQuery = "SELECT id, username, role FROM users WHERE id = ?";
+
+      // Check if is_active column exists and add it to query if it does
+      try {
+        const [columnCheck] = await pool.execute(
+          "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_active'"
+        );
+
+        if (columnCheck.length > 0) {
+          userQuery =
+            "SELECT id, username, role, is_active FROM users WHERE id = ?";
+        }
+      } catch (columnCheckError) {
+        console.log("Column check failed, proceeding without is_active");
+      }
+
+      const [users] = await pool.execute(userQuery, [decoded.id]);
 
       if (users.length === 0) {
-        console.log(
-          "[AuthMiddleware] User not found or not active for ID:",
-          decoded.id
-        );
+        console.log("[AuthMiddleware] User not found for ID:", decoded.id);
         return res.status(401).json({
           success: false,
-          message:
-            "User belonging to this token does no longer exist or is not active.",
+          message: "User belonging to this token does no longer exist.",
         });
       }
 
-      req.user = users[0];
+      const user = users[0];
+
+      // Check if user is active (only if is_active column exists)
+      if (user.hasOwnProperty("is_active") && !user.is_active) {
+        console.log("[AuthMiddleware] User not active for ID:", decoded.id);
+        return res.status(401).json({
+          success: false,
+          message: "User account is not active.",
+        });
+      }
+
+      req.user = user;
       console.log(
         "[AuthMiddleware] User attached to request:",
         req.user.username,

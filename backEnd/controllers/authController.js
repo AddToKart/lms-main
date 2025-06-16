@@ -21,11 +21,25 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find user by username - using correct column names from your database
-    const [users] = await pool.execute(
-      "SELECT id, username, email, password, full_name, role, is_active, last_login, created_at FROM users WHERE username = ?",
-      [username]
-    );
+    // Find user by username - check if is_active column exists, if not exclude it
+    let selectQuery =
+      "SELECT id, username, email, password_hash, first_name, last_name, role, last_login, created_at FROM users WHERE username = ?";
+
+    // Try to check if is_active column exists
+    try {
+      const [columnCheck] = await pool.execute(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_active'"
+      );
+
+      if (columnCheck.length > 0) {
+        selectQuery =
+          "SELECT id, username, email, password_hash, first_name, last_name, role, is_active, last_login, created_at FROM users WHERE username = ?";
+      }
+    } catch (columnCheckError) {
+      console.log("Column check failed, proceeding without is_active");
+    }
+
+    const [users] = await pool.execute(selectQuery, [username]);
 
     if (users.length === 0) {
       return res.status(401).json({
@@ -36,8 +50,8 @@ exports.login = async (req, res) => {
 
     const user = users[0];
 
-    // Check if user is active
-    if (!user.is_active) {
+    // Check if user is active (only if is_active column exists)
+    if (user.hasOwnProperty("is_active") && !user.is_active) {
       return res.status(401).json({
         success: false,
         message: "Account is deactivated. Please contact administrator.",
@@ -45,7 +59,7 @@ exports.login = async (req, res) => {
     }
 
     // Check password - your password column has the hash
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -67,8 +81,9 @@ exports.login = async (req, res) => {
       role: user.role,
     });
 
-    // Remove password from response
-    const { password: userPassword, ...userWithoutPassword } = user;
+    // Remove password from response and add full_name for compatibility
+    const { password_hash: userPassword, ...userWithoutPassword } = user;
+    userWithoutPassword.full_name = `${user.first_name} ${user.last_name}`;
 
     res.json({
       success: true,
@@ -97,6 +112,11 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Split full_name into first_name and last_name
+    const nameParts = full_name.trim().split(" ");
+    const first_name = nameParts[0] || "";
+    const last_name = nameParts.slice(1).join(" ") || "";
+
     // Check if user already exists
     const [existingUsers] = await pool.execute(
       "SELECT id FROM users WHERE username = ? OR email = ?",
@@ -116,8 +136,8 @@ exports.register = async (req, res) => {
 
     // Create user - using correct column names
     const [result] = await pool.execute(
-      "INSERT INTO users (username, email, password, full_name, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())",
-      [username, email, hashedPassword, full_name, role, 1]
+      "INSERT INTO users (username, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+      [username, email, hashedPassword, first_name, last_name, role, 1]
     );
 
     res.status(201).json({
@@ -145,10 +165,24 @@ exports.getProfile = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const [users] = await pool.execute(
-      "SELECT id, username, email, full_name, role, is_active, last_login, created_at FROM users WHERE id = ?",
-      [userId]
-    );
+    // Check if is_active column exists
+    let selectQuery =
+      "SELECT id, username, email, first_name, last_name, role, last_login, created_at FROM users WHERE id = ?";
+
+    try {
+      const [columnCheck] = await pool.execute(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_active'"
+      );
+
+      if (columnCheck.length > 0) {
+        selectQuery =
+          "SELECT id, username, email, first_name, last_name, role, is_active, last_login, created_at FROM users WHERE id = ?";
+      }
+    } catch (columnCheckError) {
+      console.log("Column check failed, proceeding without is_active");
+    }
+
+    const [users] = await pool.execute(selectQuery, [userId]);
 
     if (users.length === 0) {
       return res.status(404).json({
@@ -157,9 +191,12 @@ exports.getProfile = async (req, res) => {
       });
     }
 
+    const user = users[0];
+    user.full_name = `${user.first_name} ${user.last_name}`;
+
     res.json({
       success: true,
-      data: users[0],
+      data: user,
     });
   } catch (error) {
     console.error("Get profile error:", error);
@@ -185,7 +222,7 @@ exports.changePassword = async (req, res) => {
 
     // Get current password hash
     const [users] = await pool.execute(
-      "SELECT password FROM users WHERE id = ?",
+      "SELECT password_hash FROM users WHERE id = ?",
       [userId]
     );
 
@@ -199,7 +236,7 @@ exports.changePassword = async (req, res) => {
     // Verify current password
     const isCurrentPasswordValid = await bcrypt.compare(
       currentPassword,
-      users[0].password
+      users[0].password_hash
     );
 
     if (!isCurrentPasswordValid) {
@@ -215,7 +252,7 @@ exports.changePassword = async (req, res) => {
 
     // Update password
     await pool.execute(
-      "UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?",
+      "UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?",
       [newPasswordHash, userId]
     );
 
