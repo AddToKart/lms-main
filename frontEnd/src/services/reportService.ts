@@ -199,10 +199,8 @@ export const exportReport = async (
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
         },
-        // Add timeout and retry logic
-        signal: AbortSignal.timeout(30000), // 30 second timeout
+        signal: AbortSignal.timeout(30000),
       }
     );
 
@@ -215,12 +213,10 @@ export const exportReport = async (
         const errorData = await response.json();
         errorMessage = errorData.message || errorMessage;
       } catch (parseError) {
-        // If we can't parse the error response, use the status text
         errorMessage = response.statusText || errorMessage;
       }
 
       if (response.status === 401) {
-        // Clear invalid token
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         localStorage.removeItem("isAuthenticated");
@@ -230,88 +226,124 @@ export const exportReport = async (
       throw new Error(errorMessage);
     }
 
-    // Get the content disposition header to extract filename
-    const contentDisposition = response.headers.get("content-disposition");
-    let filename = `${reportType}_export_${
-      new Date().toISOString().split("T")[0]
-    }`;
+    // Handle file download for Excel/CSV
+    if (format === "excel" || format === "csv") {
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("content-disposition");
+      let filename = `${reportType}_export_${
+        new Date().toISOString().split("T")[0]
+      }`;
 
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(
-        /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/
-      );
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1].replace(/['"]/g, "");
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(
+          /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/
+        );
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, "");
+        }
+      } else {
+        filename += format === "excel" ? ".xlsx" : ".csv";
       }
+
+      // Create download link
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      console.log(`File downloaded: ${filename}`);
     } else {
-      // Add proper extension based on format
-      switch (format.toLowerCase()) {
-        case "excel":
-        case "xlsx":
-          filename += ".xlsx";
-          break;
-        case "csv":
-          filename += ".csv";
-          break;
-        case "json":
-          filename += ".json";
-          break;
-      }
+      // Handle JSON response
+      const data = await response.json();
+      console.log("Export data:", data);
     }
-
-    // Handle different content types
-    const contentType = response.headers.get("content-type") || "";
-    let blob: Blob;
-
-    if (contentType.includes("application/json")) {
-      const jsonData = await response.json();
-      blob = new Blob([JSON.stringify(jsonData, null, 2)], {
-        type: "application/json",
-      });
-    } else if (contentType.includes("text/csv")) {
-      const csvData = await response.text();
-      blob = new Blob([csvData], {
-        type: "text/csv",
-      });
-    } else {
-      // For Excel files and other binary formats
-      const arrayBuffer = await response.arrayBuffer();
-      blob = new Blob([arrayBuffer], {
-        type:
-          contentType ||
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-    }
-
-    // Create download link and trigger download
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-
-    // Append to body, click, and remove
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Clean up the object URL
-    window.URL.revokeObjectURL(url);
-
-    console.log(`Successfully exported ${reportType} as ${format}`);
   } catch (error: any) {
     console.error("Export error:", error);
 
-    // Handle specific error types
     if (error.name === "AbortError") {
       throw new Error("Export request timed out. Please try again.");
-    } else if (error.message.includes("fetch")) {
-      throw new Error(
-        "Unable to connect to server. Please check your connection and try again."
-      );
-    } else {
-      throw new Error(
-        error.message || "An unexpected error occurred during export."
-      );
     }
+
+    throw error;
+  }
+};
+
+export const exportLoanSummary = async (
+  format: "excel" | "csv" = "excel",
+  dateFrom?: string,
+  dateTo?: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<any>> => {
+  try {
+    console.log("[ReportService] Exporting loan summary:", {
+      format,
+      dateFrom,
+      dateTo,
+    });
+
+    const params = new URLSearchParams();
+    params.append("format", format);
+    if (dateFrom) params.append("date_from", dateFrom);
+    if (dateTo) params.append("date_to", dateTo);
+
+    const url = `${API_URL}/api/reports/export?type=loanSummary&${params.toString()}`;
+    console.log("[ReportService] Export URL:", url);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: getAuthHeaders(),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        "[ReportService] Export failed:",
+        response.status,
+        errorText
+      );
+      throw new Error(`Export failed: ${response.status} - ${errorText}`);
+    }
+
+    if (format === "excel") {
+      // Handle Excel file download
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `loan_summary_${
+        new Date().toISOString().split("T")[0]
+      }.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      return {
+        success: true,
+        message: "File downloaded successfully",
+        data: null,
+      };
+    } else {
+      // Handle JSON response
+      const data = await response.json();
+      return data;
+    }
+  } catch (error: any) {
+    console.error("[ReportService] Error exporting loan summary:", error);
+
+    if (error.name === "AbortError") {
+      throw error;
+    }
+
+    return {
+      success: false,
+      message: error.message || "Failed to export loan summary",
+      data: null,
+    };
   }
 };

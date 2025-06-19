@@ -2,25 +2,10 @@ const pool = require("../db/database");
 
 const seedData = async () => {
   try {
-    console.log("Starting to seed sample data...");
+    await pool.query("START TRANSACTION");
+    console.log("🌱 Starting data seeding...");
 
-    // Check if data already exists
-    const [existingLoans] = await pool.query(
-      "SELECT COUNT(*) as count FROM loans"
-    );
-    if (existingLoans[0].count > 0) {
-      console.log("📊 Data already exists, skipping seed...");
-      return;
-    }
-
-    // Create sample users first
-    await pool.query(`
-      INSERT IGNORE INTO users (username, email, password_hash, first_name, last_name, role, is_active, created_at) VALUES
-      ('admin', 'admin@example.com', '$2b$10$9rZFGkXsF1wEp5K.b6/oLOPQNw7KJQx8Z.gQNm5q2v3x4c5v6b7n8', 'Admin', 'User', 'admin', true, NOW()),
-      ('manager', 'manager@example.com', '$2b$10$9rZFGkXsF1wEp5K.b6/oLOPQNw7KJQx8Z.gQNm5q2v3x4c5v6b7n8', 'Manager', 'User', 'manager', true, NOW())
-    `);
-
-    // Create sample clients
+    // Clients (using INSERT IGNORE as client data is less likely to change frequently for tests)
     await pool.query(`
       INSERT IGNORE INTO clients (id, first_name, last_name, email, phone, address, city, state, postal_code, country, id_type, id_number, status, created_at) VALUES
       (1, 'John', 'Doe', 'john.doe@email.com', '+1234567890', '123 Main St', 'New York', 'NY', '10001', 'USA', 'passport', 'P123456789', 'active', '2024-01-01'),
@@ -29,20 +14,155 @@ const seedData = async () => {
       (4, 'Alice', 'Williams', 'alice.williams@email.com', '+1234567893', '321 Elm St', 'Houston', 'TX', '77001', 'USA', 'drivers_license', 'DL123456789', 'active', '2024-02-15'),
       (5, 'Charlie', 'Brown', 'charlie.brown@email.com', '+1234567894', '654 Maple Ave', 'Phoenix', 'AZ', '85001', 'USA', 'passport', 'P456789123', 'active', '2024-03-01')
     `);
+    console.log("✅ Sample clients created/ignored");
 
-    // Create sample loans
-    await pool.query(`
-      INSERT IGNORE INTO loans (id, client_id, loan_amount, approved_amount, interest_rate, term_months, purpose, start_date, end_date, status, remaining_balance, next_due_date, payment_frequency, created_at) VALUES
-      (1, 1, 10000.00, 10000.00, 5.5, 12, 'Business expansion', '2024-01-15', '2025-01-15', 'active', 8500.00, '2024-12-15', 'monthly', '2024-01-01'),
-      (2, 2, 15000.00, 15000.00, 6.0, 24, 'Home improvement', '2024-02-01', '2026-02-01', 'active', 12000.00, '2024-12-01', 'monthly', '2024-01-15'),
-      (3, 3, 5000.00, 5000.00, 4.5, 6, 'Emergency fund', '2024-03-01', '2024-09-01', 'paid_off', 0.00, NULL, 'monthly', '2024-02-01'),
-      (4, 4, 20000.00, 18000.00, 7.0, 36, 'Debt consolidation', '2024-03-15', '2027-03-15', 'active', 16000.00, '2024-11-15', 'monthly', '2024-02-15'),
-      (5, 5, 8000.00, 8000.00, 5.0, 18, 'Education loan', '2024-04-01', '2025-10-01', 'overdue', 6500.00, '2024-11-01', 'monthly', '2024-03-01'),
-      (6, 1, 12000.00, NULL, 6.5, 24, 'Vehicle purchase', '2024-04-15', '2026-04-15', 'pending', 12000.00, NULL, 'monthly', '2024-04-01'),
-      (7, 2, 7500.00, NULL, 8.0, 12, 'Medical expenses', '2024-05-01', '2025-05-01', 'rejected', 7500.00, NULL, 'monthly', '2024-04-15')
-    `);
+    // Loans - Changed to ON DUPLICATE KEY UPDATE
+    const loansData = [
+      {
+        id: 1,
+        client_id: 1,
+        loan_amount: 10000.0,
+        approved_amount: 10000.0,
+        interest_rate: 5.5,
+        term_months: 12,
+        purpose: "Business expansion",
+        start_date: "2024-01-15",
+        end_date: "2025-01-15",
+        status: "active",
+        remaining_balance: 8500.0,
+        next_due_date: "2024-12-15",
+        payment_frequency: "monthly",
+        created_at: "2025-06-01 10:00:00",
+      },
+      {
+        id: 2,
+        client_id: 2,
+        loan_amount: 15000.0,
+        approved_amount: 15000.0,
+        interest_rate: 6.0,
+        term_months: 24,
+        purpose: "Home improvement",
+        start_date: "2024-02-01",
+        end_date: "2026-02-01",
+        status: "active",
+        remaining_balance: 12000.0,
+        next_due_date: "2024-12-01",
+        payment_frequency: "monthly",
+        created_at: "2025-06-02 11:00:00",
+      },
+      {
+        id: 3,
+        client_id: 3,
+        loan_amount: 5000.0,
+        approved_amount: 5000.0,
+        interest_rate: 4.5,
+        term_months: 6,
+        purpose: "Emergency fund",
+        start_date: "2024-03-01",
+        end_date: "2024-09-01",
+        status: "paid_off",
+        remaining_balance: 0.0,
+        next_due_date: null,
+        payment_frequency: "monthly",
+        created_at: "2024-02-01 12:00:00",
+      },
+      {
+        id: 4,
+        client_id: 4,
+        loan_amount: 20000.0,
+        approved_amount: 18000.0,
+        interest_rate: 7.0,
+        term_months: 36,
+        purpose: "Debt consolidation",
+        start_date: "2024-03-15",
+        end_date: "2027-03-15",
+        status: "active",
+        remaining_balance: 16000.0,
+        next_due_date: "2024-11-15",
+        payment_frequency: "monthly",
+        created_at: "2025-06-03 13:00:00",
+      },
+      {
+        id: 5,
+        client_id: 5,
+        loan_amount: 8000.0,
+        approved_amount: 8000.0,
+        interest_rate: 5.0,
+        term_months: 18,
+        purpose: "Education loan",
+        start_date: "2024-04-01",
+        end_date: "2025-10-01",
+        status: "overdue",
+        remaining_balance: 6500.0,
+        next_due_date: "2024-11-01",
+        payment_frequency: "monthly",
+        created_at: "2024-03-01 14:00:00",
+      },
+      {
+        id: 6,
+        client_id: 1,
+        loan_amount: 12000.0,
+        approved_amount: null,
+        interest_rate: 6.5,
+        term_months: 24,
+        purpose: "Vehicle purchase",
+        start_date: "2024-04-15",
+        end_date: "2026-04-15",
+        status: "pending",
+        remaining_balance: 12000.0,
+        next_due_date: null,
+        payment_frequency: "monthly",
+        created_at: "2025-06-04 15:00:00",
+      },
+      {
+        id: 7,
+        client_id: 2,
+        loan_amount: 7500.0,
+        approved_amount: null,
+        interest_rate: 8.0,
+        term_months: 12,
+        purpose: "Medical expenses",
+        start_date: "2024-05-01",
+        end_date: "2025-05-01",
+        status: "rejected",
+        remaining_balance: 7500.0,
+        next_due_date: null,
+        payment_frequency: "monthly",
+        created_at: "2024-04-15 16:00:00",
+      },
+    ];
 
-    // Create sample payments
+    for (const loan of loansData) {
+      await pool.query(
+        `
+        INSERT INTO loans (id, client_id, loan_amount, approved_amount, interest_rate, term_months, purpose, start_date, end_date, status, remaining_balance, next_due_date, payment_frequency, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          client_id=VALUES(client_id), loan_amount=VALUES(loan_amount), approved_amount=VALUES(approved_amount), interest_rate=VALUES(interest_rate), term_months=VALUES(term_months), 
+          purpose=VALUES(purpose), start_date=VALUES(start_date), end_date=VALUES(end_date), status=VALUES(status), remaining_balance=VALUES(remaining_balance), 
+          next_due_date=VALUES(next_due_date), payment_frequency=VALUES(payment_frequency), created_at=VALUES(created_at)
+      `,
+        [
+          loan.id,
+          loan.client_id,
+          loan.loan_amount,
+          loan.approved_amount,
+          loan.interest_rate,
+          loan.term_months,
+          loan.purpose,
+          loan.start_date,
+          loan.end_date,
+          loan.status,
+          loan.remaining_balance,
+          loan.next_due_date,
+          loan.payment_frequency,
+          loan.created_at,
+        ]
+      );
+    }
+    console.log("✅ Sample loans created/updated");
+
+    // Payments (using INSERT IGNORE as payment data is less likely to change frequently for tests)
     await pool.query(`
       INSERT IGNORE INTO payments (id, loan_id, client_id, amount, payment_date, payment_method, reference_number, notes, status, processed_by, created_at) VALUES
       (1, 1, 1, 1000.00, '2024-02-15', 'bank_transfer', 'TXN001', 'First payment', 'completed', 1, '2024-02-15'),
@@ -55,23 +175,13 @@ const seedData = async () => {
       (8, 5, 5, 1000.00, '2024-05-01', 'cash', 'TXN008', 'Payment', 'completed', 1, '2024-05-01'),
       (9, 5, 5, 500.00, '2024-06-01', 'credit_card', 'TXN009', 'Partial payment', 'completed', 1, '2024-06-01')
     `);
+    console.log("✅ Sample payments created/ignored");
 
-    console.log("✅ Sample data seeded successfully!");
-
-    // Verify the data
-    const [loanCount] = await pool.query("SELECT COUNT(*) as count FROM loans");
-    const [clientCount] = await pool.query(
-      "SELECT COUNT(*) as count FROM clients"
-    );
-    const [paymentCount] = await pool.query(
-      "SELECT COUNT(*) as count FROM payments"
-    );
-
-    console.log(`📊 Created ${clientCount[0].count} clients`);
-    console.log(`📊 Created ${loanCount[0].count} loans`);
-    console.log(`📊 Created ${paymentCount[0].count} payments`);
+    await pool.query("COMMIT");
+    console.log("🎉 Data seeding completed successfully!");
   } catch (error) {
-    console.error("❌ Error seeding data:", error);
+    await pool.query("ROLLBACK");
+    console.error("Error seeding data:", error);
   } finally {
     await pool.end();
   }
@@ -82,4 +192,4 @@ if (require.main === module) {
   seedData();
 }
 
-module.exports = seedData;
+module.exports = { seedData };

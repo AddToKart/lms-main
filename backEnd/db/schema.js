@@ -634,11 +634,329 @@ const createTriggers = async () => {
   }
 };
 
+const createStoredProcedures = async () => {
+  try {
+    console.log("   ⚡ Creating stored procedures...");
+
+    // Drop existing procedures if they exist
+    const dropProcedures = [
+      "DROP PROCEDURE IF EXISTS sp_get_clients",
+      "DROP PROCEDURE IF EXISTS sp_get_clients_count",
+      "DROP PROCEDURE IF EXISTS sp_get_client_by_id",
+      "DROP PROCEDURE IF EXISTS sp_create_client",
+      "DROP PROCEDURE IF EXISTS sp_update_client",
+      "DROP PROCEDURE IF EXISTS sp_delete_client",
+      // Add loan procedures
+      "DROP PROCEDURE IF EXISTS sp_get_loans",
+      "DROP PROCEDURE IF EXISTS sp_get_loans_count",
+      "DROP PROCEDURE IF EXISTS sp_get_loan_by_id",
+      "DROP PROCEDURE IF EXISTS sp_create_loan",
+      "DROP PROCEDURE IF EXISTS sp_update_loan",
+    ];
+
+    for (const dropSql of dropProcedures) {
+      await pool.execute(dropSql);
+    }
+
+    // Create client stored procedures
+    await pool.execute(`
+      CREATE PROCEDURE sp_get_clients(
+          IN p_limit INT,
+          IN p_offset INT,
+          IN p_search VARCHAR(255),
+          IN p_status VARCHAR(50)
+      )
+      BEGIN
+          DECLARE search_term VARCHAR(257) COLLATE utf8mb4_unicode_ci;
+          SET search_term = CONCAT('%', COALESCE(p_search COLLATE utf8mb4_unicode_ci, ''), '%');
+          
+          SELECT 
+              id, first_name, last_name, email, phone, address, city, state, 
+              postal_code, country, status, created_at, updated_at
+          FROM clients 
+          WHERE (p_search IS NULL OR p_search = '' OR 
+                 CONCAT(first_name, ' ', last_name) COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(email, '') COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(phone, '') COLLATE utf8mb4_unicode_ci LIKE search_term)
+          AND (p_status IS NULL OR p_status = '' OR status COLLATE utf8mb4_unicode_ci = p_status COLLATE utf8mb4_unicode_ci)
+          ORDER BY created_at DESC 
+          LIMIT p_limit OFFSET p_offset;
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_get_clients_count(
+          IN p_search VARCHAR(255),
+          IN p_status VARCHAR(50)
+      )
+      BEGIN
+          DECLARE search_term VARCHAR(257) COLLATE utf8mb4_unicode_ci;
+          SET search_term = CONCAT('%', COALESCE(p_search COLLATE utf8mb4_unicode_ci, ''), '%');
+          
+          SELECT COUNT(*) as total
+          FROM clients 
+          WHERE (p_search IS NULL OR p_search = '' OR 
+                 CONCAT(first_name, ' ', last_name) COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(email, '') COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(phone, '') COLLATE utf8mb4_unicode_ci LIKE search_term)
+          AND (p_status IS NULL OR p_status = '' OR status COLLATE utf8mb4_unicode_ci = p_status COLLATE utf8mb4_unicode_ci);
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_get_client_by_id(IN p_id INT)
+      BEGIN
+          SELECT 
+              c.*,
+              COUNT(l.id) as loan_count,
+              COALESCE(SUM(l.loan_amount), 0) as total_borrowed,
+              COALESCE(SUM(CASE WHEN l.status = 'active' THEN l.remaining_balance END), 0) as outstanding_balance
+          FROM clients c
+          LEFT JOIN loans l ON c.id = l.client_id
+          WHERE c.id = p_id
+          GROUP BY c.id;
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_create_client(
+          IN p_first_name VARCHAR(50),
+          IN p_last_name VARCHAR(50),
+          IN p_email VARCHAR(100),
+          IN p_phone VARCHAR(20),
+          IN p_address TEXT,
+          IN p_city VARCHAR(50),
+          IN p_state VARCHAR(50),
+          IN p_postal_code VARCHAR(20),
+          IN p_country VARCHAR(50),
+          IN p_id_type VARCHAR(50),
+          IN p_id_number VARCHAR(50),
+          IN p_status VARCHAR(20)
+      )
+      BEGIN
+          INSERT INTO clients (
+              first_name, last_name, email, phone, address, city, state, 
+              postal_code, country, id_type, id_number, status, created_at
+          ) VALUES (
+              p_first_name, p_last_name, p_email, p_phone, p_address, p_city, p_state,
+              p_postal_code, p_country, p_id_type, p_id_number, p_status, NOW()
+          );
+          
+          SELECT LAST_INSERT_ID() as id;
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_update_client(
+          IN p_id INT,
+          IN p_first_name VARCHAR(50),
+          IN p_last_name VARCHAR(50),
+          IN p_email VARCHAR(100),
+          IN p_phone VARCHAR(20),
+          IN p_address TEXT,
+          IN p_city VARCHAR(50),
+          IN p_state VARCHAR(50),
+          IN p_postal_code VARCHAR(20),
+          IN p_country VARCHAR(50),
+          IN p_id_type VARCHAR(50),
+          IN p_id_number VARCHAR(50),
+          IN p_status VARCHAR(20)
+      )
+      BEGIN
+          UPDATE clients SET 
+              first_name = p_first_name,
+              last_name = p_last_name,
+              email = p_email,
+              phone = p_phone,
+              address = p_address,
+              city = p_city,
+              state = p_state,
+              postal_code = p_postal_code,
+              country = p_country,
+              id_type = p_id_type,
+              id_number = p_id_number,
+              status = p_status,
+              updated_at = NOW()
+          WHERE id = p_id;
+          
+          SELECT ROW_COUNT() as affected_rows;
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_delete_client(IN p_id INT)
+      BEGIN
+          DELETE FROM clients WHERE id = p_id;
+          SELECT ROW_COUNT() as affected_rows;
+      END
+    `);
+
+    // Create loan stored procedures
+    await pool.execute(`
+      CREATE PROCEDURE sp_get_loans(
+          IN p_limit INT,
+          IN p_offset INT,
+          IN p_search VARCHAR(255),
+          IN p_status VARCHAR(50),
+          IN p_client_id INT
+      )
+      BEGIN
+          DECLARE search_term VARCHAR(257) COLLATE utf8mb4_unicode_ci;
+          SET search_term = CONCAT('%', COALESCE(p_search COLLATE utf8mb4_unicode_ci, ''), '%');
+          
+          SELECT 
+              l.id,
+              l.client_id,
+              l.loan_amount,
+              l.approved_amount,
+              l.installment_amount,
+              l.interest_rate,
+              l.term_months,
+              l.purpose,
+              l.start_date,
+              l.end_date,
+              l.status,
+              l.next_due_date,
+              l.payment_frequency,
+              l.remaining_balance,
+              l.approval_date,
+              l.approval_notes,
+              l.approved_by,
+              l.created_at,
+              l.updated_at,
+              CONCAT(c.first_name, ' ', c.last_name) as client_name,
+              c.email as client_email,
+              c.phone as client_phone
+          FROM loans l
+          LEFT JOIN clients c ON l.client_id = c.id
+          WHERE (p_search IS NULL OR p_search = '' OR 
+                 CONCAT(c.first_name, ' ', c.last_name) COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(c.email, '') COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(l.purpose, '') COLLATE utf8mb4_unicode_ci LIKE search_term)
+          AND (p_status IS NULL OR p_status = '' OR l.status COLLATE utf8mb4_unicode_ci = p_status COLLATE utf8mb4_unicode_ci)
+          AND (p_client_id IS NULL OR l.client_id = p_client_id)
+          ORDER BY l.created_at DESC 
+          LIMIT p_limit OFFSET p_offset;
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_get_loans_count(
+          IN p_search VARCHAR(255),
+          IN p_status VARCHAR(50),
+          IN p_client_id INT
+      )
+      BEGIN
+          DECLARE search_term VARCHAR(257) COLLATE utf8mb4_unicode_ci;
+          SET search_term = CONCAT('%', COALESCE(p_search COLLATE utf8mb4_unicode_ci, ''), '%');
+          
+          SELECT COUNT(*) as total
+          FROM loans l
+          LEFT JOIN clients c ON l.client_id = c.id
+          WHERE (p_search IS NULL OR p_search = '' OR 
+                 CONCAT(c.first_name, ' ', c.last_name) COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(c.email, '') COLLATE utf8mb4_unicode_ci LIKE search_term OR 
+                 COALESCE(l.purpose, '') COLLATE utf8mb4_unicode_ci LIKE search_term)
+          AND (p_status IS NULL OR p_status = '' OR l.status COLLATE utf8mb4_unicode_ci = p_status COLLATE utf8mb4_unicode_ci)
+          AND (p_client_id IS NULL OR l.client_id = p_client_id);
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_get_loan_by_id(IN p_id INT)
+      BEGIN
+          SELECT 
+              l.*,
+              CONCAT(c.first_name, ' ', c.last_name) as client_name,
+              c.email as client_email,
+              c.phone as client_phone,
+              c.address as client_address,
+              u.username as approved_by_name
+          FROM loans l
+          LEFT JOIN clients c ON l.client_id = c.id
+          LEFT JOIN users u ON l.approved_by = u.id
+          WHERE l.id = p_id;
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_create_loan(
+          IN p_client_id INT,
+          IN p_loan_amount DECIMAL(15,2),
+          IN p_interest_rate DECIMAL(5,2),
+          IN p_term_months INT,
+          IN p_purpose TEXT,
+          IN p_payment_frequency VARCHAR(20)
+      )
+      BEGIN
+          DECLARE new_loan_id INT;
+          
+          INSERT INTO loans (
+              client_id,
+              loan_amount,
+              interest_rate,
+              term_months,
+              purpose,
+              payment_frequency,
+              status,
+              remaining_balance,
+              created_at
+          ) VALUES (
+              p_client_id,
+              p_loan_amount,
+              p_interest_rate,
+              p_term_months,
+              p_purpose,
+              COALESCE(p_payment_frequency, 'monthly'),
+              'pending',
+              p_loan_amount,
+              NOW()
+          );
+          
+          SET new_loan_id = LAST_INSERT_ID();
+          SELECT new_loan_id as id;
+      END
+    `);
+
+    await pool.execute(`
+      CREATE PROCEDURE sp_update_loan(
+          IN p_id INT,
+          IN p_loan_amount DECIMAL(15,2),
+          IN p_interest_rate DECIMAL(5,2),
+          IN p_term_months INT,
+          IN p_purpose TEXT,
+          IN p_payment_frequency VARCHAR(20),
+          IN p_status VARCHAR(50)
+      )
+      BEGIN
+          UPDATE loans SET 
+              loan_amount = COALESCE(p_loan_amount, loan_amount),
+              interest_rate = COALESCE(p_interest_rate, interest_rate),
+              term_months = COALESCE(p_term_months, term_months),
+              purpose = COALESCE(p_purpose, purpose),
+              payment_frequency = COALESCE(p_payment_frequency, payment_frequency),
+              status = COALESCE(p_status, status),
+              updated_at = NOW()
+          WHERE id = p_id;
+          
+          SELECT ROW_COUNT() as affected_rows;
+      END
+    `);
+
+    console.log("   ✅ Stored procedures created successfully");
+    return true;
+  } catch (error) {
+    console.error("   ❌ Error creating stored procedures:", error.message);
+    throw error;
+  }
+};
+
 const initializeDatabase = async () => {
   try {
     await createTables();
     await createTriggers();
-    await insertDefaultAdmin(); // Only create admin user, no sample data
+    await createStoredProcedures(); // Add this line
+    await insertDefaultAdmin();
     return true;
   } catch (error) {
     console.error("Database initialization failed:", error);
@@ -650,5 +968,6 @@ module.exports = {
   createTables,
   insertDefaultAdmin,
   createTriggers,
+  createStoredProcedures, // Export the new function
   initializeDatabase,
 };

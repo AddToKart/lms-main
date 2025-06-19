@@ -21,58 +21,49 @@ exports.getClients = async (req, res) => {
       status,
     });
 
-    // Build the WHERE clause
-    let whereClause = "";
-    const queryParams = [];
+    // Use stored procedures with proper result extraction
+    console.log("[ClientController] Calling sp_get_clients_count...");
+    const [countResult] = await pool.execute(
+      "CALL sp_get_clients_count(?, ?)", // Stored procedure to get client count
+      [search || null, status || null] // Parameters: search term and status
+    );
 
-    if (search) {
-      whereClause = `WHERE (CONCAT(first_name, ' ', last_name) LIKE ? OR email LIKE ? OR phone LIKE ?)`;
-      const searchTerm = `%${search}%`;
-      queryParams.push(searchTerm, searchTerm, searchTerm);
-    }
+    console.log(
+      "[ClientController] Count result structure:",
+      JSON.stringify(countResult, null, 2)
+    );
 
-    if (status) {
-      whereClause += whereClause ? " AND status = ?" : "WHERE status = ?";
-      queryParams.push(status);
-    }
+    // Extract total from the nested result structure
+    const total = countResult[0]?.[0]?.total || 0;
+    console.log(
+      "[ClientController] Extracted total:",
+      total,
+      "Type:",
+      typeof total
+    );
 
-    console.log("[ClientController] WHERE clause:", whereClause);
-    console.log("[ClientController] Query params:", queryParams);
+    console.log("[ClientController] Calling sp_get_clients...");
+    const [clientsResult] = await pool.execute(
+      "CALL sp_get_clients(?, ?, ?, ?)", // Stored procedure to get clients
+      [limit, offset, search || null, status || null] // Parameters: limit, offset, search term, and status
+    );
 
-    // Get total count
-    const countQuery = `SELECT COUNT(*) as total FROM clients ${whereClause}`;
-    console.log("[ClientController] Count query:", countQuery);
+    console.log(
+      "[ClientController] Clients result structure:",
+      JSON.stringify(clientsResult, null, 2)
+    );
 
-    const [countResult] = await pool.execute(countQuery, queryParams);
-    const total = countResult[0].total;
+    // Extract clients from the nested result structure
+    const clients = clientsResult[0] || [];
+    console.log("[ClientController] Extracted clients:", clients.length);
 
-    console.log("[ClientController] Total clients found:", total);
-
-    // Get clients with pagination
-    const selectQuery = `
-      SELECT id, first_name, last_name, email, phone, address, city, state, 
-             postal_code, country, status, created_at, updated_at
-      FROM clients 
-      ${whereClause}
-      ORDER BY created_at DESC 
-      LIMIT ? OFFSET ?
-    `;
-
-    const selectParams = [...queryParams, limit, offset];
-    console.log("[ClientController] Select query:", selectQuery);
-    console.log("[ClientController] Select params:", selectParams);
-
-    const [clients] = await pool.execute(selectQuery, selectParams);
-
-    console.log("[ClientController] Clients retrieved:", clients.length);
-
-    const totalPages = Math.ceil(total / limit);
+    const totalPages = Math.ceil(Number(total) / limit);
 
     const response = {
       success: true,
       data: {
         clients: clients,
-        total: total,
+        total: Number(total), // Ensure it's a number
         page: page,
         limit: limit,
         totalPages: totalPages,
@@ -83,6 +74,7 @@ exports.getClients = async (req, res) => {
       success: response.success,
       clientCount: response.data.clients.length,
       total: response.data.total,
+      totalType: typeof response.data.total,
       page: response.data.page,
     });
 
@@ -134,17 +126,16 @@ exports.getClientById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [clients] = await pool.query(
-      `SELECT c.*, 
-       COUNT(l.id) as loan_count,
-       COALESCE(SUM(l.loan_amount), 0) as total_borrowed,
-       COALESCE(SUM(CASE WHEN l.status = 'active' THEN l.remaining_balance END), 0) as outstanding_balance
-       FROM clients c
-       LEFT JOIN loans l ON c.id = l.client_id
-       WHERE c.id = ?
-       GROUP BY c.id`,
-      [id]
+    console.log("[ClientController] Calling sp_get_client_by_id for ID:", id);
+    const [result] = await pool.execute("CALL sp_get_client_by_id(?)", [id]);
+
+    console.log(
+      "[ClientController] Client by ID result structure:",
+      JSON.stringify(result, null, 2)
     );
+
+    // Extract client data from nested result structure
+    const clients = result[0] || [];
 
     if (clients.length === 0) {
       return res.status(404).json({
@@ -193,26 +184,9 @@ exports.createClient = async (req, res) => {
       });
     }
 
-    // Check if email already exists (if provided)
-    if (email) {
-      const [existingClients] = await pool.query(
-        "SELECT id FROM clients WHERE email = ?",
-        [email]
-      );
-
-      if (existingClients.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Client with this email already exists",
-        });
-      }
-    }
-
-    const [result] = await pool.query(
-      `INSERT INTO clients (
-        first_name, last_name, email, phone, address, city, state, 
-        postal_code, country, id_type, id_number, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    console.log("[ClientController] Calling sp_create_client...");
+    const [result] = await pool.execute(
+      "CALL sp_create_client(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", // Stored procedure to create client
       [
         first_name,
         last_name,
@@ -229,10 +203,18 @@ exports.createClient = async (req, res) => {
       ]
     );
 
+    console.log(
+      "[ClientController] Create result structure:",
+      JSON.stringify(result, null, 2)
+    );
+
+    // Extract ID from nested result structure
+    const insertId = result[0]?.[0]?.id || result.insertId;
+
     res.status(201).json({
       success: true,
       message: "Client created successfully",
-      data: { id: result.insertId },
+      data: { id: insertId },
     });
   } catch (error) {
     console.error("Error creating client:", error);
@@ -248,30 +230,55 @@ exports.createClient = async (req, res) => {
 exports.updateClient = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const {
+      first_name,
+      last_name,
+      email,
+      phone,
+      address,
+      city,
+      state,
+      postal_code,
+      country,
+      id_type,
+      id_number,
+      status,
+    } = req.body;
 
-    // Remove fields that shouldn't be updated directly
-    delete updates.id;
-    delete updates.created_at;
-
-    const fields = Object.keys(updates).filter(
-      (key) => updates[key] !== undefined
+    console.log("[ClientController] Calling sp_update_client...");
+    const [result] = await pool.execute(
+      "CALL sp_update_client(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", // Stored procedure to update client
+      [
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        address,
+        city,
+        state,
+        postal_code,
+        country,
+        id_type,
+        id_number,
+        status,
+      ]
     );
 
-    if (fields.length === 0) {
-      return res.status(400).json({
+    console.log(
+      "[ClientController] Update result structure:",
+      JSON.stringify(result, null, 2)
+    );
+
+    // Extract affected rows from nested result structure
+    const affectedRows = result[0]?.[0]?.affected_rows || 0;
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
         success: false,
-        message: "No fields to update",
+        message: "Client not found",
       });
     }
-
-    const setClause = fields.map((field) => `${field} = ?`).join(", ");
-    const values = fields.map((field) => updates[field]);
-
-    await pool.query(
-      `UPDATE clients SET ${setClause}, updated_at = NOW() WHERE id = ?`,
-      [...values, id]
-    );
 
     res.status(200).json({
       success: true,
@@ -292,20 +299,23 @@ exports.deleteClient = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if client has any loans
-    const [loans] = await pool.query(
-      "SELECT id FROM loans WHERE client_id = ?",
-      [id]
+    console.log("[ClientController] Calling sp_delete_client...");
+    const [result] = await pool.execute("CALL sp_delete_client(?)", [id]);
+
+    console.log(
+      "[ClientController] Delete result structure:",
+      JSON.stringify(result, null, 2)
     );
 
-    if (loans.length > 0) {
-      return res.status(400).json({
+    // Extract affected rows from nested result structure
+    const affectedRows = result[0]?.[0]?.affected_rows || 0;
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
         success: false,
-        message: "Cannot delete client with existing loans",
+        message: "Client not found",
       });
     }
-
-    await pool.query("DELETE FROM clients WHERE id = ?", [id]);
 
     res.status(200).json({
       success: true,

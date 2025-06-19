@@ -93,7 +93,7 @@ const seedTestData = async () => {
         "active",
         8500.0,
         "2024-12-15",
-        "2024-01-15",
+        "2025-06-05 10:00:00", // Updated created_at
       ],
       [
         2,
@@ -107,7 +107,7 @@ const seedTestData = async () => {
         "active",
         12000.0,
         "2024-12-01",
-        "2024-02-01",
+        "2025-06-06 11:00:00", // Updated created_at
       ],
       [
         3,
@@ -121,7 +121,7 @@ const seedTestData = async () => {
         "paid_off",
         0.0,
         null,
-        "2024-03-01",
+        "2024-03-01 12:00:00", // Kept in 2024 for variety
       ],
       [
         4,
@@ -135,7 +135,7 @@ const seedTestData = async () => {
         "active",
         16000.0,
         "2024-11-15",
-        "2024-03-15",
+        "2025-06-07 13:00:00", // Updated created_at
       ],
       [
         5,
@@ -149,35 +149,35 @@ const seedTestData = async () => {
         "overdue",
         6500.0,
         "2024-11-01",
-        "2024-04-01",
+        "2024-04-01 14:00:00", // Kept in 2024
       ],
       [
         1,
         12000.0,
-        null,
+        null, // approved_amount is null for pending
         6.5,
         24,
         "Vehicle purchase",
-        null,
-        null,
+        null, // start_date is null for pending
+        null, // end_date is null for pending
         "pending",
-        12000.0,
-        null,
-        "2024-04-15",
+        12000.0, // remaining_balance is loan_amount for pending
+        null, // next_due_date is null for pending
+        "2025-06-08 15:00:00", // Updated created_at
       ],
       [
         2,
         7500.0,
-        null,
+        null, // approved_amount is null for rejected
         8.0,
         12,
         "Medical expenses",
-        null,
-        null,
+        null, // start_date is null for rejected
+        null, // end_date is null for rejected
         "rejected",
-        7500.0,
-        null,
-        "2024-05-01",
+        7500.0, // remaining_balance is loan_amount for rejected
+        null, // next_due_date is null for rejected
+        "2024-05-01 16:00:00", // Kept in 2024
       ],
     ];
 
@@ -191,6 +191,7 @@ const seedTestData = async () => {
         loan
       );
     }
+    console.log("✅ Sample loans created/updated");
 
     // Create sample payments
     const paymentQueries = [

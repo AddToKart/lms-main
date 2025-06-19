@@ -42,8 +42,8 @@ const createLoan = async (req, res) => {
       interest_rate,
       term_months,
       purpose,
-      start_date,
       payment_frequency, // Expecting 'monthly', 'weekly', etc.
+      start_date, // ADD THIS LINE - it was missing
     } = req.body;
 
     // --- Input Validation and Sanitization ---
@@ -64,7 +64,6 @@ const createLoan = async (req, res) => {
     // interest_rate
     interest_rate = parseFloat(interest_rate);
     if (isNaN(interest_rate) || interest_rate < 0) {
-      // 0% interest is possible
       errors.push("Interest rate must be a non-negative number.");
     }
 
@@ -223,178 +222,90 @@ const createLoan = async (req, res) => {
   }
 };
 
-// Get all loans (logic shared by getLoans and getClientsWithLoans)
-const getLoansLogic = async (req, res, endpointName = "getLoans") => {
+// Replace getLoansLogic with getLoans
+const getLoans = async (req, res) => {
   try {
-    console.log(`[LoanController] ${endpointName} - Request received`);
-    console.log(`[LoanController] Query params:`, req.query);
+    console.log("[LoanController] GET /api/loans - Request received");
+    console.log("[LoanController] Query params:", req.query);
 
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 1000);
     const offset = (page - 1) * limit;
     const search = req.query.search || "";
     const status = req.query.status || "";
-    const client_id = req.query.client_id || "";
+    const client_id = req.query.client_id
+      ? parseInt(req.query.client_id)
+      : null;
 
-    let whereClause = "WHERE 1=1";
-    const queryParams = [];
-
-    if (search) {
-      whereClause +=
-        " AND (l.id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR l.purpose LIKE ? OR c.email LIKE ?)";
-      const searchTerm = `%${search}%`;
-      queryParams.push(
-        searchTerm,
-        searchTerm,
-        searchTerm,
-        searchTerm,
-        searchTerm
-      );
-    }
-    if (status) {
-      whereClause += " AND l.status = ?";
-      queryParams.push(status);
-    }
-    if (client_id) {
-      console.log(`[LoanController] Filtering by client_id: ${client_id}`);
-      whereClause += " AND l.client_id = ?";
-      queryParams.push(client_id);
-    }
-
-    console.log(`[LoanController] WHERE clause: ${whereClause}`);
-    console.log(
-      `[LoanController] Query params: ${JSON.stringify(queryParams)}`
+    // Use stored procedures with proper result extraction
+    const [countResult] = await pool.execute(
+      "CALL sp_get_loans_count(?, ?, ?)",
+      [search || null, status || null, client_id]
     );
+    const total = countResult[0]?.[0]?.total || 0;
 
-    const countQuery = `SELECT COUNT(*) as total FROM loans l JOIN clients c ON l.client_id = c.id ${whereClause}`;
-    const [countResult] = await pool.execute(countQuery, queryParams);
-    const total = countResult[0].total;
+    const [loansResult] = await pool.execute(
+      "CALL sp_get_loans(?, ?, ?, ?, ?)",
+      [limit, offset, search || null, status || null, client_id]
+    );
+    const loans = loansResult[0] || [];
 
-    console.log(`[LoanController] Total loans found: ${total}`);
-
-    const selectQuery = `
-      SELECT 
-        l.id, l.client_id, CONCAT(c.first_name, ' ', c.last_name) as client_name, 
-        c.email as client_email, c.phone as client_phone,
-        l.loan_amount, l.approved_amount, l.interest_rate, l.term_months, l.purpose,
-        l.start_date, l.end_date, l.status, l.next_due_date, l.payment_frequency,
-        l.remaining_balance, l.installment_amount,
-        l.approval_date, l.approval_notes, l.approved_by,
-        l.created_at, l.updated_at,
-        u.username as approved_by_username
-      FROM loans l
-      JOIN clients c ON l.client_id = c.id
-      LEFT JOIN users u ON l.approved_by = u.id
-      ${whereClause}
-      ORDER BY l.created_at DESC
-      LIMIT ? OFFSET ?
-    `;
-    const [loans] = await pool.execute(selectQuery, [
-      ...queryParams,
-      limit,
-      offset,
-    ]);
-
-    console.log(`[LoanController] Loans retrieved: ${loans.length}`);
-    if (loans.length > 0) {
-      console.log(`[LoanController] First loan status: ${loans[0].status}`);
-    }
-
-    const loansWithInstallments = loans.map((loan) => {
-      let installment = loan.installment_amount;
-      if (
-        installment === null ||
-        installment === undefined ||
-        parseFloat(installment) === 0
-      ) {
-        const principal = parseFloat(loan.approved_amount || loan.loan_amount);
-        const annualInterestRate = parseFloat(loan.interest_rate);
-        const termMonths = parseInt(loan.term_months);
-        installment = calculateInstallment(
-          principal,
-          annualInterestRate,
-          termMonths
-        );
-      }
-      return {
-        ...loan,
-        installment_amount: parseFloat(installment).toFixed(2),
-      };
-    });
+    const totalPages = Math.ceil(Number(total) / limit);
 
     res.json({
       success: true,
       data: {
-        loans: loansWithInstallments,
-        total: total,
-        page: page,
-        limit: limit,
-        totalPages: Math.ceil(total / limit),
+        loans: loans,
+        pagination: {
+          total: Number(total),
+          page: page,
+          limit: limit,
+          totalPages: totalPages,
+        },
       },
     });
   } catch (error) {
-    console.error(`[LoanController] Error in ${endpointName}:`, error);
+    console.error("[LoanController] Error in getLoans:", error);
     res.status(500).json({
       success: false,
-      message: `Failed to retrieve loans for ${endpointName}`,
+      message: "Failed to retrieve loans",
       error: error.message,
     });
   }
 };
 
-const getLoans = async (req, res) => {
-  await getLoansLogic(req, res, "getLoans");
-};
-
-const getClientsWithLoans = async (req, res) => {
-  console.log(
-    "[LoanController] getClientsWithLoans - Delegating to getLoansLogic"
-  );
-  await getLoansLogic(req, res, "getClientsWithLoans");
-};
-
-// Get a single loan by ID
+// Get loan by ID
 const getLoanById = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("[LoanController] Get Loan By ID - ID:", id);
-    const [loans] = await pool.execute(
-      `SELECT l.*, CONCAT(c.first_name, ' ', c.last_name) as client_name, c.email as client_email, c.phone as client_phone, u.username as approved_by_username
-       FROM loans l
-       JOIN clients c ON l.client_id = c.id
-       LEFT JOIN users u ON l.approved_by = u.id
-       WHERE l.id = ?`,
-      [id]
+
+    console.log("[LoanController] Calling sp_get_loan_by_id for ID:", id);
+    const [result] = await pool.execute("CALL sp_get_loan_by_id(?)", [id]);
+
+    console.log(
+      "[LoanController] Loan by ID result structure:",
+      JSON.stringify(result, null, 2)
     );
 
+    // Extract loan data from nested result structure
+    const loans = result[0] || [];
+
     if (loans.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Loan not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Loan not found",
+      });
     }
 
-    let loan = loans[0];
-    if (
-      loan.installment_amount === null ||
-      loan.installment_amount === undefined ||
-      parseFloat(loan.installment_amount) === 0
-    ) {
-      const principal = parseFloat(loan.approved_amount || loan.loan_amount);
-      const annualInterestRate = parseFloat(loan.interest_rate);
-      const termMonths = parseInt(loan.term_months);
-      loan.installment_amount = calculateInstallment(
-        principal,
-        annualInterestRate,
-        termMonths
-      ).toFixed(2);
-    }
-
-    res.json({ success: true, data: loan });
+    res.status(200).json({
+      success: true,
+      data: loans[0],
+    });
   } catch (error) {
-    console.error("[LoanController] Error in getLoanById:", error);
+    console.error("[LoanController] Error fetching loan:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to retrieve loan",
+      message: "Failed to fetch loan",
       error: error.message,
     });
   }
@@ -404,107 +315,54 @@ const getLoanById = async (req, res) => {
 const updateLoan = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body; // e.g., { loan_amount, interest_rate, term_months, purpose, status, start_date, ... }
+    const {
+      loan_amount,
+      interest_rate,
+      term_months,
+      purpose,
+      payment_frequency,
+      status,
+    } = req.body;
 
-    console.log(`[LoanController] Update Loan ID: ${id} with data:`, updates);
+    console.log("[LoanController] Calling sp_update_loan...");
+    const [result] = await pool.execute(
+      "CALL sp_update_loan(?, ?, ?, ?, ?, ?, ?)",
 
-    const allowedUpdates = [
-      "loan_amount",
-      "interest_rate",
-      "term_months",
-      "purpose",
-      "status",
-      "start_date",
-      "payment_frequency",
-      "next_due_date",
-      // Add other fields that are permissible to update via this general endpoint
-      // Be cautious about which fields can be updated here, especially financial or status fields
-      // if they have dedicated approval/rejection flows.
-    ];
-
-    const fieldPlaceholders = [];
-    const values = [];
-
-    for (const key in updates) {
-      if (allowedUpdates.includes(key) && updates[key] !== undefined) {
-        if (key === "start_date" || key === "next_due_date") {
-          const formattedDate = formatDateToDb(updates[key]);
-          if (
-            formattedDate === null &&
-            updates[key] !== null &&
-            updates[key] !== ""
-          ) {
-            // if original value was not null/empty but formatting failed
-            console.warn(
-              `[LoanController] Update Loan - Invalid date value for ${key}: ${updates[key]}. It will be set to NULL or skipped if not allowed.`
-            );
-            // Depending on strictness, either return error or let it be null/skipped
-            // For now, let's allow null if formatting fails but original was not explicitly null
-            values.push(null);
-          } else {
-            values.push(formattedDate);
-          }
-        } else {
-          values.push(updates[key]);
-        }
-        fieldPlaceholders.push(`${key} = ?`);
-      }
-    }
-
-    if (fieldPlaceholders.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No valid fields provided for update.",
-      });
-    }
-
-    values.push(id); // For the WHERE id = ?
-
-    const sql = `UPDATE loans SET ${fieldPlaceholders.join(
-      ", "
-    )}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-
-    console.log("[LoanController] Update SQL:", sql);
-    console.log("[LoanController] Update Values:", values);
-
-    const [result] = await pool.execute(sql, values);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Loan not found or no changes made.",
-      });
-    }
-
-    const [updatedLoan] = await pool.execute(
-      `SELECT l.*, CONCAT(c.first_name, ' ', c.last_name) as client_name 
-         FROM loans l
-         JOIN clients c ON l.client_id = c.id 
-         WHERE l.id = ?`,
-      [id]
+      [
+        id,
+        loan_amount,
+        interest_rate,
+        term_months,
+        purpose,
+        payment_frequency,
+        status,
+      ]
     );
 
-    res.json({
-      success: true,
-      message: "Loan updated successfully",
-      data: updatedLoan[0],
-    });
-  } catch (error) {
-    console.error("[LoanController] Error in updateLoan:", error);
-    if (
-      error.code === "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD" ||
-      error.message.includes("Incorrect date value")
-    ) {
-      return res.status(400).json({
+    console.log(
+      "[LoanController] Update result structure:",
+      JSON.stringify(result, null, 2)
+    );
+
+    // Extract affected rows from nested result structure
+    const affectedRows = result[0]?.[0]?.affected_rows || 0;
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
         success: false,
-        message:
-          "Invalid date format provided. Please use YYYY-MM-DD for date fields.",
-        error: error.message,
+        message: "Loan not found",
       });
     }
+
+    res.status(200).json({
+      success: true,
+      message: "Loan updated successfully",
+    });
+  } catch (error) {
+    console.error("[LoanController] Error updating loan:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update loan.",
+      message: "Failed to update loan",
       error: error.message,
     });
   }
@@ -747,30 +605,25 @@ const getLoanStats = async (req, res) => {
     const [rows] = await pool.execute(`
       SELECT
         COUNT(*) AS total_loans,
-        SUM(COALESCE(approved_amount, loan_amount, 0)) AS total_loan_amount,
-        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_loans,
-        AVG(interest_rate) AS average_interest_rate,
-        SUM(CASE WHEN status = 'completed' OR status = 'paid_off' THEN 1 ELSE 0 END) AS completed_loans,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_loans,
-        SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END) AS overdue_loans
+        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved_loans,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_loans,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_loans,
+        SUM(CASE WHEN status = 'defaulted' THEN 1 ELSE 0 END) AS defaulted_loans,
+        COALESCE(SUM(loan_amount), 0) AS total_loan_amount,
+        COALESCE(SUM(remaining_balance), 0) AS total_outstanding
       FROM loans
     `);
 
-    // rows[0] will contain the aggregated values.
-    // If there are no loans, COUNT will be 0, SUMs will be NULL (or 0 if COALESCE is used effectively), AVG will be NULL.
-    const dbStats = rows[0] || {};
-
     const stats = {
-      total_loans: Number(dbStats.total_loans || 0),
-      total_loan_amount: Number(dbStats.total_loan_amount || 0),
-      active_loans: Number(dbStats.active_loans || 0),
-      average_interest_rate:
-        dbStats.average_interest_rate !== null
-          ? parseFloat(dbStats.average_interest_rate)
-          : 0, // Ensure number or 0
-      completed_loans: Number(dbStats.completed_loans || 0),
-      pending_loans: Number(dbStats.pending_loans || 0),
-      overdue_loans: Number(dbStats.overdue_loans || 0),
+      total_loans: Number(rows[0].total_loans || 0),
+      pending_loans: Number(rows[0].pending_loans || 0),
+      approved_loans: Number(rows[0].approved_loans || 0),
+      active_loans: Number(rows[0].active_loans || 0),
+      completed_loans: Number(rows[0].completed_loans || 0),
+      defaulted_loans: Number(rows[0].defaulted_loans || 0),
+      total_loan_amount: Number(rows[0].total_loan_amount || 0),
+      total_outstanding: Number(rows[0].total_outstanding || 0),
     };
 
     res.json({
@@ -778,10 +631,43 @@ const getLoanStats = async (req, res) => {
       data: stats,
     });
   } catch (error) {
-    console.error("[LoanController] Error in getLoanStats:", error);
+    console.error("Error fetching loan stats:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to retrieve loan statistics.",
+      message: "Failed to retrieve loan statistics",
+      error: error.message,
+    });
+  }
+};
+
+// Get clients with loans
+const getClientsWithLoans = async (req, res) => {
+  try {
+    const query = `
+      SELECT DISTINCT
+        c.id,
+        c.first_name,
+        c.last_name,
+        c.email,
+        COUNT(l.id) as loan_count,
+        SUM(CASE WHEN l.status = 'active' THEN l.remaining_balance ELSE 0 END) as total_outstanding
+      FROM clients c
+      JOIN loans l ON c.id = l.client_id
+      GROUP BY c.id, c.first_name, c.last_name, c.email
+      ORDER BY c.last_name, c.first_name
+    `;
+
+    const [clients] = await pool.execute(query);
+
+    res.status(200).json({
+      success: true,
+      data: clients,
+    });
+  } catch (error) {
+    console.error("Error fetching clients with loans:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch clients with loans",
       error: error.message,
     });
   }
@@ -794,6 +680,9 @@ module.exports = {
   updateLoan,
   deleteLoan,
   approveLoan,
+  rejectLoan,
+  getLoanStats,
+  getClientsWithLoans,
   rejectLoan,
   getLoanStats,
   getClientsWithLoans,
